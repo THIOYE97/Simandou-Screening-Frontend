@@ -2,8 +2,16 @@
 import axios from "axios";
 import { getToken, clearToken } from "./auth";
 
+// Vercel: définir VITE_API_BASE_URL=https://api.tondomaine.com
+// Dev: fallback sur /api (proxy Vite)
+const rawBase = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
+
+// Nettoie un trailing slash pour éviter "//path"
+const API_BASE_URL =
+  (rawBase && rawBase.trim().replace(/\/+$/, "")) || "/api";
+
 export const api = axios.create({
-  baseURL: "/api",
+  baseURL: API_BASE_URL,
   timeout: 500000,
 });
 
@@ -53,10 +61,9 @@ export type SimpleScreeningIn = {
 };
 
 export async function launchSimpleScreening(payload: SimpleScreeningIn) {
-  const { data } = await api.post("/screening/simple", payload); // ✅ ici
+  const { data } = await api.post("/screening/simple", payload);
   return data as { request_id: string; status: string };
 }
-
 
 export async function listScreenings(params: {
   status?: string;
@@ -105,11 +112,10 @@ export type UploadDocResp = {
   download_url: string;
 };
 
-
 export type OcrExtractResp = {
   doc_id: string;
   case_id?: string | null;
-  ocr_status: string; // plus safe que union stricte
+  ocr_status: string;
   ocr_confidence: number;
   extracted_fields: {
     last_name?: string;
@@ -122,12 +128,11 @@ export type OcrExtractResp = {
   download_url: string;
 };
 
-
 export type ScreeningFromDocIn = {
   document_id: string;
   client_id?: string;
   country_focus?: string;
-  override_name?: string; // ex: "MYRIANE INGRID NDONGUE"
+  override_name?: string;
 };
 
 export type ScreeningOut = {
@@ -145,7 +150,7 @@ export async function uploadCaseDocument(
   file: File
 ): Promise<UploadDocResp> {
   const form = new FormData();
-  form.append("doc_type", docType); // ex: "ID_CARD"
+  form.append("doc_type", docType);
   form.append("file", file);
 
   const { data } = await api.post(`/documents/cases/${caseId}/upload`, form);
@@ -159,22 +164,27 @@ export async function extractOcr(documentId: string): Promise<OcrExtractResp> {
 }
 
 // 3) screening from document
-export async function screeningFromDocument(payload: ScreeningFromDocIn): Promise<ScreeningOut> {
+export async function screeningFromDocument(
+  payload: ScreeningFromDocIn
+): Promise<ScreeningOut> {
   const { data } = await api.post(`/screening/from-document`, payload);
   return data as ScreeningOut;
 }
-  //Upload document standalone (no case)
-export async function uploadDocumentStandalone(docType: string, file: File): Promise<UploadDocResp> {
+
+// Upload document standalone (no case)
+export async function uploadDocumentStandalone(
+  docType: string,
+  file: File
+): Promise<UploadDocResp> {
   const form = new FormData();
   form.append("doc_type", docType);
   form.append("file", file);
+
   const { data } = await api.post(`/documents/upload`, form);
   return data as UploadDocResp;
 }
 
-
 // 4) download export (PDF)
-
 export async function downloadScreeningExportPdf(requestId: string) {
   const res = await api.get(`/screening/${requestId}/export.pdf`, {
     responseType: "blob",
@@ -187,14 +197,21 @@ export async function downloadScreeningExportPdf(requestId: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
-export async function setScreeningDecision(requestId: string, decision: "PASS" | "BLOCK", comment: string) {
-  const { data } = await api.post(`/analyst/screenings/${requestId}/decision`, { decision, comment });
-  return data as { ok: boolean; case_id: string; request_id: string; decision: string; decided_by: string };
+
+export async function setScreeningDecision(
+  requestId: string,
+  decision: "PASS" | "BLOCK",
+  comment: string
+) {
+  const { data } = await api.post(`/analyst/screenings/${requestId}/decision`, {
+    decision,
+    comment,
+  });
+  return data as {
+    ok: boolean;
+    case_id: string;
+    request_id: string;
+    decision: string;
+    decided_by: string;
+  };
 }
-
-
-// --------------------
-// (OPTIONAL) If you still have SUMSUB code somewhere,
-// keep it in another file (api.sumsub.ts) to avoid clutter.
-// For now, removing Sumsub from AnalystHome is enough.
-// --------------------

@@ -1,5 +1,5 @@
 // src/pages/AnalystHome.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   launchSimpleScreening,
@@ -22,8 +22,18 @@ type FlowEvent = {
 
 type StepModal =
   | { kind: "UPLOAD_DONE"; document_id: string; ocr_status?: string | null }
-  | { kind: "OCR_DONE"; document_id: string; ocr_status?: string | null; ocr_confidence?: number | null }
-  | { kind: "SCREENING_DONE"; request_id: string; mode: "OCR" | "SIMPLE"; name?: string };
+  | {
+      kind: "OCR_DONE";
+      document_id: string;
+      ocr_status?: string | null;
+      ocr_confidence?: number | null;
+      fields: {
+        last_name: string;
+        first_name: string;
+        date_of_birth: string;
+        document_number: string;
+      };
+    };
 
 type ScreeningPopupData = {
   request_id: string;
@@ -33,16 +43,6 @@ type ScreeningPopupData = {
   risk_level?: string | null;
   confidence?: number | string | null;
   matches_count?: number | null;
-
-  // preview matches
-  matches_preview?: Array<{
-    name: string;
-    score?: number | null;
-    band?: string | null;
-    source?: string | null;
-    ref?: string | null;
-    program?: string | null;
-  }>;
 
   // decisions
   decision_latest?: any | null;
@@ -68,7 +68,7 @@ const actionLabel = (a?: string | null) => {
   if (!v) return "—";
   if (v.includes("APPROVE") || v.includes("CLEAR") || v === "PASS") return "✅ Action recommandée : APPROUVER / PASS";
   if (v.includes("REVIEW")) return "⚠️ Action recommandée : REVIEW (revue manuelle)";
-  if (v.includes("REJECT") || v.includes("BLOCK")) return "⛔ Action recommandée : REJETER / BLOCK";
+  if (v.includes("REJECT") || v.includes("BLOCK")) return "⛔ Action recommandée : REVOIR / BLOCK";
   return `🔎 Action recommandée : ${v}`;
 };
 const humanRisk = (r?: string | null) => {
@@ -95,55 +95,32 @@ function decisionHuman(v?: string | null) {
   return x;
 }
 
-function splitName(full: string) {
-  const s = (full || "").trim();
-  if (!s) return { first: "", last: "" };
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return { first: "", last: parts[0] };
-  return { first: parts.slice(0, -1).join(" "), last: parts.slice(-1)[0] };
-}
-
 export default function AnalystHome() {
-  const [tab, setTab] = useState<Tab>("ocr");
+  // ✅ Mettre le mode Simple en avant dès la connexion
+  const [tab, setTab] = useState<Tab>("simple");
   const [busy, setBusy] = useState(false);
 
   const [toast, setToast] = useState<{ tone?: "ok" | "warn" | "danger"; text: string } | null>(null);
 
-  // Flow events for audit UI (in the final modal)
+  // Flow events (audit UI in final modal)
   const [flow, setFlow] = useState<FlowEvent[]>([]);
   const pushFlow = (e: Omit<FlowEvent, "at"> & { at?: string }) =>
     setFlow((prev) => [{ at: e.at || nowIso(), title: e.title, detail: e.detail }, ...prev].slice(0, 30));
 
-  // step modals
+  // Step modals
   const [stepModal, setStepModal] = useState<StepModal | null>(null);
 
-  // final popup
+  // Final popup (screening result)
   const [popup, setPopup] = useState<ScreeningPopupData | null>(null);
 
   // -----------------------------------
-  // SIMPLE screening
+  // SIMPLE screening (simplifié)
   // -----------------------------------
   const [entityType, setEntityType] = useState<"INDIVIDUAL" | "COMPANY">("INDIVIDUAL");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [dob, setDob] = useState("");
-  const [country, setCountry] = useState("");
-  const [nationality, setNationality] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [regNo, setRegNo] = useState("");
-  const [incCountry, setIncCountry] = useState("");
-  const [aliasesText, setAliasesText] = useState("");
   const [maxMatches, setMaxMatches] = useState(20);
-  const [includeAliases, setIncludeAliases] = useState(true);
-
-  const aliases = useMemo(
-    () =>
-      aliasesText
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    [aliasesText]
-  );
 
   const canLaunchSimple = useMemo(() => {
     if (entityType === "INDIVIDUAL") return !!firstName.trim() && !!lastName.trim();
@@ -154,18 +131,12 @@ export default function AnalystHome() {
     setToast(null);
     setBusy(true);
     try {
+      // ✅ Payload simplifié: plus de DOB/country/nationality/aliases/includeAliases
       const payload: SimpleScreeningIn = {
         entity_type: entityType,
         first_name: entityType === "INDIVIDUAL" ? firstName.trim() : undefined,
         last_name: entityType === "INDIVIDUAL" ? lastName.trim() : undefined,
-        dob: dob.trim() || undefined,
-        country: country.trim() || undefined,
-        nationality: nationality.trim() || undefined,
         company_name: entityType === "COMPANY" ? companyName.trim() : undefined,
-        registration_number: entityType === "COMPANY" ? regNo.trim() : undefined,
-        incorporation_country: entityType === "COMPANY" ? incCountry.trim() : undefined,
-        aliases,
-        include_aliases: includeAliases,
         max_matches: maxMatches,
       };
 
@@ -181,7 +152,6 @@ export default function AnalystHome() {
         detail: `request_id=${res.request_id} (mode=SIMPLE)`,
       });
 
-      // show final popup directly
       setPopup({
         request_id: res.request_id,
         status: res.status,
@@ -193,7 +163,6 @@ export default function AnalystHome() {
         matches_count: res.matches_count ?? res.matchesCount ?? null,
       });
 
-      // optionally: refresh full details for preview + decisions
       await refreshPopupDetails(res.request_id, "SIMPLE", name);
 
       setToast({ tone: "ok", text: `✅ Screening lancé: ${res.request_id}` });
@@ -205,22 +174,16 @@ export default function AnalystHome() {
   }
 
   function resetSimple() {
+    setEntityType("INDIVIDUAL");
     setFirstName("");
     setLastName("");
-    setDob("");
-    setCountry("");
-    setNationality("");
     setCompanyName("");
-    setRegNo("");
-    setIncCountry("");
-    setAliasesText("");
     setMaxMatches(20);
-    setIncludeAliases(true);
     setToast(null);
   }
 
   // -----------------------------------
-  // OCR flow
+  // OCR flow (upload + OCR + confirmation en popup)
   // -----------------------------------
   const [ocrFile, setOcrFile] = useState<File | null>(null);
   const [ocrPreviewUrl, setOcrPreviewUrl] = useState<string | null>(null);
@@ -229,6 +192,7 @@ export default function AnalystHome() {
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [ocrResp, setOcrResp] = useState<OcrExtractResp | null>(null);
 
+  // (on garde ces states pour cohérence, mais la confirmation se fait désormais dans le popup)
   const [ocrLastName, setOcrLastName] = useState("");
   const [ocrFirstName, setOcrFirstName] = useState("");
   const [ocrDob, setOcrDob] = useState("");
@@ -242,8 +206,6 @@ export default function AnalystHome() {
     const ln = ocrLastName.trim();
     return [fn, ln].filter(Boolean).join(" ").trim();
   }, [ocrFirstName, ocrLastName]);
-
-  const canStartFromDoc = useMemo(() => !!documentId && overrideName.length >= 3, [documentId, overrideName]);
 
   useEffect(() => {
     return () => {
@@ -288,7 +250,7 @@ export default function AnalystHome() {
         detail: `document_id=${up.document_id} ocr_status=${up.ocr_status ?? "-"}`,
       });
 
-      // ✅ small step modal
+      // ✅ popup upload OK (comme avant)
       setStepModal({
         kind: "UPLOAD_DONE",
         document_id: up.document_id,
@@ -314,21 +276,31 @@ export default function AnalystHome() {
       const r: any = await extractOcr(documentId);
       setOcrResp(r);
 
-      setOcrLastName((r.extracted_fields?.last_name || "").trim());
-      setOcrFirstName((r.extracted_fields?.first_name || "").trim());
-      setOcrDob((r.extracted_fields?.date_of_birth || "").trim());
-      setOcrDocNo((r.extracted_fields?.document_number || "").trim());
+      const fields = {
+        last_name: (r.extracted_fields?.last_name || "").trim(),
+        first_name: (r.extracted_fields?.first_name || "").trim(),
+        date_of_birth: (r.extracted_fields?.date_of_birth || "").trim(),
+        document_number: (r.extracted_fields?.document_number || "").trim(),
+      };
+
+      // sync states (optionnel mais pratique)
+      setOcrLastName(fields.last_name);
+      setOcrFirstName(fields.first_name);
+      setOcrDob(fields.date_of_birth);
+      setOcrDocNo(fields.document_number);
 
       pushFlow({
         title: "OCR terminé",
         detail: `status=${r.ocr_status} conf=${r.ocr_confidence ?? "-"}`,
       });
 
+      // ✅ popup OCR_DONE avec champs modifiables + actions
       setStepModal({
         kind: "OCR_DONE",
         document_id: documentId,
         ocr_status: r.ocr_status ?? null,
         ocr_confidence: typeof r.ocr_confidence === "number" ? r.ocr_confidence : null,
+        fields,
       });
 
       setToast({ tone: "ok", text: `✅ Extraction OK: status=${r.ocr_status}` });
@@ -339,45 +311,49 @@ export default function AnalystHome() {
     }
   }
 
-  async function onStartScreeningFromDoc() {
+  async function startScreeningFromDoc(overrideNameStr: string) {
     if (!documentId) return;
-    if (!overrideName) {
+    const name = (overrideNameStr || "").trim();
+    if (name.length < 3) {
       setToast({ tone: "danger", text: "❌ Mets au moins Prénoms + Nom." });
       return;
     }
+
+    const res: any = await screeningFromDocument({
+      document_id: documentId,
+      client_id: clientId.trim() || undefined,
+      country_focus: countryFocus.trim() || undefined,
+      override_name: name,
+    });
+
+    pushFlow({
+      title: "Screening lancé",
+      detail: `request_id=${res.request_id} (mode=OCR)`,
+    });
+
+    // close step modal, open final popup
+    setStepModal(null);
+
+    setPopup({
+      request_id: res.request_id,
+      status: res.status ?? null,
+      mode: "OCR",
+      name,
+      recommended_action: res.recommended_action ?? res.recommendedAction ?? null,
+      risk_level: res.risk_level ?? res.riskLevel ?? null,
+      confidence: res.confidence ?? null,
+      matches_count: res.matches_count ?? res.matchesCount ?? null,
+    });
+
+    await refreshPopupDetails(res.request_id, "OCR", name);
+    setToast({ tone: "ok", text: `✅ Screening lancé: request_id=${res.request_id}` });
+  }
+
+  async function onStartScreeningFromDoc() {
     setBusy(true);
     setToast(null);
     try {
-      const res: any = await screeningFromDocument({
-        document_id: documentId,
-        client_id: clientId.trim() || undefined,
-        country_focus: countryFocus.trim() || undefined,
-        override_name: overrideName,
-      });
-
-      pushFlow({
-        title: "Screening lancé",
-        detail: `request_id=${res.request_id} (mode=OCR)`,
-      });
-
-      // close step modal, open final popup
-      setStepModal(null);
-
-      setPopup({
-        request_id: res.request_id,
-        status: res.status ?? null,
-        mode: "OCR",
-        name: overrideName,
-        recommended_action: res.recommended_action ?? res.recommendedAction ?? null,
-        risk_level: res.risk_level ?? res.riskLevel ?? null,
-        confidence: res.confidence ?? null,
-        matches_count: res.matches_count ?? res.matchesCount ?? null,
-      });
-
-      // refresh full details for preview + decisions
-      await refreshPopupDetails(res.request_id, "OCR", overrideName);
-
-      setToast({ tone: "ok", text: `✅ Screening lancé: request_id=${res.request_id}` });
+      await startScreeningFromDoc(overrideName);
     } catch (e: any) {
       setToast({ tone: "danger", text: `❌ Screening error: ${e?.response?.data?.detail || e?.message || String(e)}` });
     } finally {
@@ -404,14 +380,6 @@ export default function AnalystHome() {
       const d: any = await getScreeningDetails(requestId);
 
       const matchesRaw = Array.isArray(d?.matches) ? d.matches : [];
-      const preview = matchesRaw.slice(0, 5).map((m: any) => ({
-        name: String(m?.entity_name || m?.entity_primary_name || m?.name || "-"),
-        score: m?.match_score ?? m?.matchScore ?? null,
-        band: m?.match_band_label || m?.match_band || null,
-        source: m?.source_block?.label || m?.source_name || null,
-        ref: m?.source_block?.ref || m?.source_ref || null,
-        program: m?.source_block?.program || m?.program || null,
-      }));
 
       setPopup((prev) => ({
         ...(prev || { request_id: requestId, mode, name }),
@@ -425,7 +393,6 @@ export default function AnalystHome() {
         confidence: d?.result?.confidence ?? prev?.confidence ?? null,
         matches_count: typeof matchesRaw.length === "number" ? matchesRaw.length : prev?.matches_count ?? null,
 
-        matches_preview: preview,
         decision_latest: d?.decision_latest ?? null,
         decision_history: Array.isArray(d?.decision_history) ? d.decision_history : [],
       }));
@@ -455,7 +422,6 @@ export default function AnalystHome() {
       setToast({ tone: "ok", text: `✅ Décision enregistrée: ${decision}` });
       setBypassComment("");
 
-      // ✅ refresh decisions so it appears instantly
       await refreshPopupDetails(popup.request_id, popup.mode, popup.name);
     } catch (e: any) {
       setToast({ tone: "danger", text: `❌ Erreur décision: ${e?.response?.data?.detail || e?.message || String(e)}` });
@@ -464,12 +430,21 @@ export default function AnalystHome() {
     }
   }
 
-  // -----------------------------------
-  // Derived UI helpers
-  // -----------------------------------
-  const previewEmpty = !popup?.matches_preview || popup.matches_preview.length === 0;
-
   const latestDecision = popup?.decision_latest ?? null;
+
+  // Helpers for popup OCR edit
+  const ocrPopupName = useMemo(() => {
+    if (!stepModal || stepModal.kind !== "OCR_DONE") return "";
+    const fn = stepModal.fields.first_name.trim();
+    const ln = stepModal.fields.last_name.trim();
+    return [fn, ln].filter(Boolean).join(" ").trim();
+  }, [stepModal]);
+
+  const canStartFromPopup = useMemo(() => {
+    if (!documentId) return false;
+    if (!stepModal || stepModal.kind !== "OCR_DONE") return false;
+    return ocrPopupName.length >= 3;
+  }, [documentId, stepModal, ocrPopupName]);
 
   return (
     <div className="page">
@@ -481,7 +456,7 @@ export default function AnalystHome() {
               Analyst Console
             </div>
             <div className="page-title">Analyst</div>
-            <div className="page-subtitle">Upload → OCR → Screening → Décision → Export PDF.</div>
+            <div className="page-subtitle">Simple → (optionnel) Upload → OCR → Screening → Décision → Export PDF.</div>
           </div>
 
           <div className="pill-row">
@@ -511,22 +486,89 @@ export default function AnalystHome() {
                 <div className="h2" style={{ margin: 0 }}>
                   Lancer un screening
                 </div>
-                <div className="small">Mode Extraction recommandé. Mode Simple reste disponible.</div>
+                <div className="small">Mode Simple recommandé. Mode Extraction reste disponible.</div>
               </div>
 
               <div className="tabbar">
-                <div className={`tab ${tab === "ocr" ? "active" : ""}`} onClick={() => setTab("ocr")}>
-                  Mode Extraction
-                </div>
                 <div className={`tab ${tab === "simple" ? "active" : ""}`} onClick={() => setTab("simple")}>
                   Mode Simple
+                </div>
+                <div className={`tab ${tab === "ocr" ? "active" : ""}`} onClick={() => setTab("ocr")}>
+                  Mode Extraction
                 </div>
               </div>
             </div>
 
-            {tab === "ocr" ? (
+            {tab === "simple" ? (
               <>
-                {/* 1) Upload */}
+                {/* SIMPLE (simplifié) */}
+                <div className="card" style={{ marginTop: 8 }}>
+                  <div className="h2" style={{ marginTop: 0 }}>
+                    Mode Simple
+                  </div>
+
+                  <div className="form-grid">
+                    <div className="field">
+                      <label className="small">Type</label>
+                      <select className="select" value={entityType} onChange={(e) => setEntityType(e.target.value as any)}>
+                        <option value="INDIVIDUAL">INDIVIDUAL</option>
+                        <option value="COMPANY">COMPANY</option>
+                      </select>
+                    </div>
+
+                    <div className="field">
+                      <label className="small">Max matches</label>
+                      <input
+                        className="input"
+                        type="number"
+                        value={maxMatches}
+                        onChange={(e) => setMaxMatches(Number(e.target.value))}
+                        min={1}
+                        max={200}
+                      />
+                    </div>
+
+                    {entityType === "INDIVIDUAL" ? (
+                      <>
+                        <div className="field">
+                          <label className="small">First name</label>
+                          <input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                        </div>
+                        <div className="field">
+                          <label className="small">Last name</label>
+                          <input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="field span-2">
+                        <label className="small">Company name</label>
+                        <input className="input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+                      </div>
+                    )}
+
+                    <div className="field span-2">
+                      <label className="small">Actions</label>
+                      <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <button className="btn" disabled={busy || !canLaunchSimple} onClick={onLaunchSimple}>
+                          {busy ? "En cours..." : "Lancer"}
+                        </button>
+                        <button className="btn secondary" disabled={busy} onClick={resetSimple}>
+                          Reset
+                        </button>
+                      </div>
+
+                      {!canLaunchSimple ? (
+                        <div className="small" style={{ marginTop: 8 }}>
+                          {entityType === "INDIVIDUAL" ? "First name + Last name requis." : "Company name requis."}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* OCR: 1) Upload */}
                 <div className="card" style={{ marginTop: 8 }}>
                   <div className="h2" style={{ marginTop: 0 }}>
                     1) Upload recto (sans case)
@@ -591,10 +633,10 @@ export default function AnalystHome() {
                   ) : null}
                 </div>
 
-                {/* 2) OCR */}
+                {/* OCR: 2) Extraction (confirmation dans popup) */}
                 <div className="card" style={{ marginTop: 12 }}>
                   <div className="h2" style={{ marginTop: 0 }}>
-                    2) Extraction + Confirmation analyst
+                    2) Extraction + Confirmation (popup)
                   </div>
 
                   <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
@@ -614,23 +656,6 @@ export default function AnalystHome() {
 
                   <div className="form-grid">
                     <div className="field">
-                      <label className="small">Nom</label>
-                      <input className="input" value={ocrLastName} onChange={(e) => setOcrLastName(e.target.value)} />
-                    </div>
-                    <div className="field">
-                      <label className="small">Prénoms</label>
-                      <input className="input" value={ocrFirstName} onChange={(e) => setOcrFirstName(e.target.value)} />
-                    </div>
-                    <div className="field">
-                      <label className="small">DOB</label>
-                      <input className="input" value={ocrDob} onChange={(e) => setOcrDob(e.target.value)} placeholder="YYYY-MM-DD" />
-                    </div>
-                    <div className="field">
-                      <label className="small">Doc number</label>
-                      <input className="input" value={ocrDocNo} onChange={(e) => setOcrDocNo(e.target.value)} />
-                    </div>
-
-                    <div className="field">
                       <label className="small">client_id</label>
                       <input className="input" value={clientId} onChange={(e) => setClientId(e.target.value)} />
                     </div>
@@ -640,20 +665,8 @@ export default function AnalystHome() {
                     </div>
 
                     <div className="field span-2">
-                      <label className="small">Nom complet (utilisé pour screening)</label>
-                      <input className="input" value={overrideName} readOnly />
-                      <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                        On lance le screening sur: <b>{overrideName || "(vide)"}</b>
-                      </div>
-                    </div>
-
-                    <div className="field span-2">
-                      <label className="small">Actions</label>
-                      <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                        <button className="btn" disabled={busy || !canStartFromDoc} onClick={onStartScreeningFromDoc}>
-                          {busy ? "..." : "Lancer Screening"}
-                        </button>
-                        {!canStartFromDoc ? <span className="small">Requis: upload + nom/prénoms confirmés.</span> : null}
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Après extraction, un popup s’ouvre avec les données extraites (modifiable) + bouton “Lancer Screening”.
                       </div>
                     </div>
                   </div>
@@ -667,97 +680,6 @@ export default function AnalystHome() {
                       <textarea readOnly value={JSON.stringify(ocrResp, null, 2)} />
                     </details>
                   ) : null}
-                </div>
-              </>
-            ) : (
-              <>
-                {/* SIMPLE */}
-                <div className="form-grid">
-                  <div className="field">
-                    <label className="small">Type</label>
-                    <select className="select" value={entityType} onChange={(e) => setEntityType(e.target.value as any)}>
-                      <option value="INDIVIDUAL">INDIVIDUAL</option>
-                      <option value="COMPANY">COMPANY</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label className="small">Max matches</label>
-                    <input className="input" type="number" value={maxMatches} onChange={(e) => setMaxMatches(Number(e.target.value))} min={1} max={200} />
-                  </div>
-
-                  {entityType === "INDIVIDUAL" ? (
-                    <>
-                      <div className="field">
-                        <label className="small">First name</label>
-                        <input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                      </div>
-                      <div className="field">
-                        <label className="small">Last name</label>
-                        <input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                      </div>
-                      <div className="field">
-                        <label className="small">DOB (YYYY-MM-DD)</label>
-                        <input className="input" value={dob} onChange={(e) => setDob(e.target.value)} />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="field">
-                        <label className="small">Company name</label>
-                        <input className="input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-                      </div>
-                      <div className="field">
-                        <label className="small">Registration number</label>
-                        <input className="input" value={regNo} onChange={(e) => setRegNo(e.target.value)} />
-                      </div>
-                      <div className="field">
-                        <label className="small">Incorporation country</label>
-                        <input className="input" value={incCountry} onChange={(e) => setIncCountry(e.target.value)} />
-                      </div>
-                    </>
-                  )}
-
-                  <div className="field">
-                    <label className="small">Country</label>
-                    <input className="input" value={country} onChange={(e) => setCountry(e.target.value)} />
-                  </div>
-
-                  <div className="field">
-                    <label className="small">Nationality</label>
-                    <input className="input" value={nationality} onChange={(e) => setNationality(e.target.value)} />
-                  </div>
-
-                  <div className="field span-2">
-                    <label className="small">Aliases (1 par ligne)</label>
-                    <textarea value={aliasesText} onChange={(e) => setAliasesText(e.target.value)} />
-                  </div>
-
-                  <div className="field">
-                    <label className="small">Include aliases</label>
-                    <select className="select" value={includeAliases ? "yes" : "no"} onChange={(e) => setIncludeAliases(e.target.value === "yes")}>
-                      <option value="yes">yes</option>
-                      <option value="no">no</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label className="small">Actions</label>
-                    <div className="row" style={{ gap: 10, alignItems: "center" }}>
-                      <button className="btn" disabled={busy || !canLaunchSimple} onClick={onLaunchSimple}>
-                        {busy ? "En cours..." : "Lancer"}
-                      </button>
-                      <button className="btn secondary" disabled={busy} onClick={resetSimple}>
-                        Reset
-                      </button>
-                    </div>
-
-                    {!canLaunchSimple ? (
-                      <div className="small" style={{ marginTop: 8 }}>
-                        {entityType === "INDIVIDUAL" ? "First name + Last name requis." : "Company name requis."}
-                      </div>
-                    ) : null}
-                  </div>
                 </div>
               </>
             )}
@@ -814,8 +736,8 @@ export default function AnalystHome() {
                   <div className="modal-sub">
                     <span className="badge">document_id: {stepModal.document_id}</span>
                     {"ocr_status" in stepModal && stepModal.ocr_status ? <span className="badge">ocr_status: {stepModal.ocr_status}</span> : null}
-                    {"ocr_confidence" in stepModal && typeof stepModal.ocr_confidence === "number" ? (
-                      <span className="badge">conf: {fmtConfidence(stepModal.ocr_confidence)}</span>
+                    {"ocr_confidence" in stepModal && typeof (stepModal as any).ocr_confidence === "number" ? (
+                      <span className="badge">conf: {fmtConfidence((stepModal as any).ocr_confidence)}</span>
                     ) : null}
                   </div>
                 </div>
@@ -831,7 +753,7 @@ export default function AnalystHome() {
                     <>
                       <div style={{ fontWeight: 900 }}>Prochaine étape</div>
                       <div className="small" style={{ marginTop: 6 }}>
-                        Ferme ce popup puis lance l’OCR.
+                        
                       </div>
                       <div className="row" style={{ gap: 10, marginTop: 12 }}>
                         <button
@@ -851,21 +773,113 @@ export default function AnalystHome() {
                     </>
                   ) : (
                     <>
-                      <div style={{ fontWeight: 900 }}>Prochaine étape</div>
-                      <div className="small" style={{ marginTop: 6 }}>
-                        Ferme ce popup puis lance le screening.
+                      {/* ✅ OCR popup = confirmation + édition + lancement screening */}
+                      <div style={{ fontWeight: 900 }}>Données extraites (modifiable)</div>
+                      <div className="small" style={{ marginTop: 6, opacity: 0.9 }}>
+                        Modifie si besoin puis lance le screening.
                       </div>
-                      <div className="row" style={{ gap: 10, marginTop: 12 }}>
+
+                      <div className="form-grid" style={{ marginTop: 12 }}>
+                        <div className="field">
+                          <label className="small">Nom</label>
+                          <input
+                            className="input"
+                            value={stepModal.fields.last_name}
+                            onChange={(e) =>
+                              setStepModal((prev) =>
+                                prev && prev.kind === "OCR_DONE"
+                                  ? { ...prev, fields: { ...prev.fields, last_name: e.target.value } }
+                                  : prev
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label className="small">Prénoms</label>
+                          <input
+                            className="input"
+                            value={stepModal.fields.first_name}
+                            onChange={(e) =>
+                              setStepModal((prev) =>
+                                prev && prev.kind === "OCR_DONE"
+                                  ? { ...prev, fields: { ...prev.fields, first_name: e.target.value } }
+                                  : prev
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label className="small">DOB</label>
+                          <input
+                            className="input"
+                            placeholder="YYYY-MM-DD"
+                            value={stepModal.fields.date_of_birth}
+                            onChange={(e) =>
+                              setStepModal((prev) =>
+                                prev && prev.kind === "OCR_DONE"
+                                  ? { ...prev, fields: { ...prev.fields, date_of_birth: e.target.value } }
+                                  : prev
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label className="small">Doc number</label>
+                          <input
+                            className="input"
+                            value={stepModal.fields.document_number}
+                            onChange={(e) =>
+                              setStepModal((prev) =>
+                                prev && prev.kind === "OCR_DONE"
+                                  ? { ...prev, fields: { ...prev.fields, document_number: e.target.value } }
+                                  : prev
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="field span-2">
+                          <label className="small">Nom complet (screening)</label>
+                          <input className="input" value={ocrPopupName} readOnly />
+                          <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                            On lance le screening sur: <b>{ocrPopupName || "(vide)"}</b>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="row" style={{ gap: 10, marginTop: 12, flexWrap: "wrap" }}>
                         <button
                           className="btn"
-                          onClick={() => {
-                            setStepModal(null);
-                            onStartScreeningFromDoc();
+                          disabled={busy || !canStartFromPopup}
+                          onClick={async () => {
+                            // sync states (optionnel)
+                            setOcrLastName(stepModal.fields.last_name);
+                            setOcrFirstName(stepModal.fields.first_name);
+                            setOcrDob(stepModal.fields.date_of_birth);
+                            setOcrDocNo(stepModal.fields.document_number);
+
+                            setBusy(true);
+                            setToast(null);
+                            try {
+                              await startScreeningFromDoc(ocrPopupName);
+                            } catch (e: any) {
+                              setToast({
+                                tone: "danger",
+                                text: `❌ Screening error: ${e?.response?.data?.detail || e?.message || String(e)}`,
+                              });
+                            } finally {
+                              setBusy(false);
+                            }
                           }}
-                          disabled={busy || !canStartFromDoc}
                         >
                           ▶ Lancer Screening
                         </button>
+
+                        {!canStartFromPopup ? <span className="small">Requis: upload + nom/prénoms.</span> : null}
+
                         <button className="btn secondary" onClick={() => setStepModal(null)}>
                           Fermer
                         </button>
@@ -975,42 +989,13 @@ export default function AnalystHome() {
                   </div>
                 </div>
 
-                {/* Results preview */}
+                {/* ✅ On enlève les tableaux résultats (tout se fait en popup / détails) */}
                 <div className="card" style={{ marginTop: 12 }}>
-                  <div style={{ fontWeight: 950 }}>Résultats (aperçu)</div>
-                  <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                    Top 5 correspondances (si disponibles). Pour tout voir: “Ouvrir détails”.
-                  </div>
-
-                  <div style={{ marginTop: 12 }}>
-                    {previewEmpty ? (
-                      <div className="small">Aucune correspondance.</div>
-                    ) : (
-                      <table className="table">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Nom</th>
-                            <th>Catégorie</th>
-                            <th>Réf</th>
-                            <th>Programme</th>
-                            <th>Score</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(popup.matches_preview || []).map((m, i) => (
-                            <tr key={i}>
-                              <td>{i + 1}</td>
-                              <td>{m.name}</td>
-                              <td>{m.band || "-"}</td>
-                              <td>{m.ref || "-"}</td>
-                              <td>{m.program || "-"}</td>
-                              <td>{m.score == null ? "-" : String(m.score)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                  <div style={{ fontWeight: 950 }}>Résumé</div>
+                  <div className="small" style={{ opacity: 0.85, marginTop: 6, lineHeight: 1.6 }}>
+                    Pour analyser les matchs (sanctions/PEP/media) : clique <b>“Ouvrir détails”</b>.
+                    <br />
+                    Export disponible via <b>“Export PDF”</b>.
                   </div>
                 </div>
 
@@ -1092,10 +1077,6 @@ export default function AnalystHome() {
                     </details>
                   ) : null}
                 </div>
-
-                <div className="small" style={{ marginTop: 12 }}>
-                  Astuce : si l’action recommandée est <b>REVIEW</b>, passe par “Ouvrir détails” pour analyser les matchs (sanctions/PEP/media).
-                </div>
               </div>
 
               <div className="modal-footer">
@@ -1110,4 +1091,3 @@ export default function AnalystHome() {
     </div>
   );
 }
-

@@ -1,21 +1,28 @@
+// vite.config.ts
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
-export default defineConfig({
-  server: {
-    host: true,
-    port: 5173,
-    allowedHosts: true, // ou "all" selon ta version
+// En dev: /api -> http://localhost:8000 (et on enlève le préfixe /api)
+// En prod (Vercel): pas de proxy, le front appelle directement VITE_API_BASE_URL
+export default defineConfig(({ mode }) => {
+  const isDev = mode === "development";
 
-    proxy: {
-      "/api": {
-        target: "http://localhost:8000",
-        changeOrigin: true,
-        secure: false,
-
-        // 🔥 enlève le préfixe /api avant d'envoyer au backend
-        rewrite: (path) => path.replace(/^\/api/, ""),
-      },
-    },
-  },
+  return {
+    plugins: [react()],
+    server: isDev
+      ? {
+          host: true,
+          port: 5173,
+          strictPort: true,
+          proxy: {
+            "/api": {
+              target: "http://localhost:8000",
+              changeOrigin: true,
+              secure: false,
+              rewrite: (path) => path.replace(/^\/api/, ""),
+            },
+          },
+        }
+      : undefined,
+  };
 });
-

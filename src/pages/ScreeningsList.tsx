@@ -11,14 +11,18 @@ export type ScreeningListItem = {
   completed_at?: string | null;
   case_id?: string | null;
   kind?: string | null;
+
   client_name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   full_name?: string | null;
+
+  // optionnel selon backend
+  client_id?: string | null;
 };
 
 const PAGE_SIZE = 20;
-const SERVER_MAX = 200; // ton backend limite à 200
+const SERVER_MAX = 200; // backend limite à 200
 
 function fmtDate(s?: string | null) {
   if (!s) return "—";
@@ -82,21 +86,39 @@ function frError(msg: string) {
   return msg;
 }
 
+type ListResponseShape =
+  | ScreeningListItem[]
+  | {
+      items?: ScreeningListItem[];
+      total?: number;
+      count?: number;
+      limit?: number;
+      offset?: number;
+    };
+
+function extractItemsAndTotal(res: ListResponseShape): { items: ScreeningListItem[]; total: number | null } {
+  if (Array.isArray(res)) return { items: res, total: null };
+  const items = Array.isArray(res?.items) ? res.items : [];
+  const total = typeof res?.total === "number" ? res.total : typeof res?.count === "number" ? res.count : null;
+  return { items, total };
+}
+
 export default function ScreeningsList() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // ✅ filtres demandés
+  // filtres UI
   const [status, setStatus] = useState("");
   const [name, setName] = useState("");
 
-  // offset = pagination UI (toujours par 20)
+  // offset UI
   const [offset, setOffset] = useState(0);
 
-  // données venant du backend
+  // données backend (page ou gros fetch)
   const [serverItems, setServerItems] = useState<ScreeningListItem[]>([]);
+  const [serverTotal, setServerTotal] = useState<number | null>(null);
 
-  // mode: si name est rempli => on fait une pagination locale sur un gros fetch
+  // ✅ si name est rempli => mode "local filter" sur un fetch large
   const nameMode = useMemo(() => !!name.trim(), [name]);
 
   const filteredAll = useMemo(() => {
@@ -105,11 +127,21 @@ export default function ScreeningsList() {
     return serverItems.filter((r) => norm(displayName(r)).includes(n));
   }, [serverItems, name]);
 
+  // ✅ IMPORTANT:
+  // - En mode normal (name vide): pagination = serveur (serverItems déjà = page)
+  // - En mode nameMode: pagination = locale (slice sur filteredAll)
   const pageItems = useMemo(() => {
+    if (!nameMode) return serverItems;
     return filteredAll.slice(offset, offset + PAGE_SIZE);
-  }, [filteredAll, offset]);
+  }, [nameMode, serverItems, filteredAll, offset]);
 
-  const total = filteredAll.length;
+  const total = useMemo(() => {
+    if (nameMode) return filteredAll.length;
+    // si le backend nous donne total => on l’utilise pour calculer hasNext + subtitle
+    // sinon fallback (moins fiable)
+    return serverTotal ?? serverItems.length;
+  }, [nameMode, filteredAll.length, serverTotal, serverItems.length]);
+
   const pageFrom = total === 0 ? 0 : offset + 1;
   const pageTo = Math.min(offset + PAGE_SIZE, total);
 
@@ -121,32 +153,34 @@ export default function ScreeningsList() {
     setErr(null);
 
     try {
-      // ✅ Si on filtre par NOM => on récupère un "gros paquet" (200 max) puis pagination locale
       const serverLimit = nameMode ? SERVER_MAX : PAGE_SIZE;
       const serverOffset = nameMode ? 0 : nextOffset;
 
-      const res = await listScreenings({
+      const res = (await listScreenings({
         limit: serverLimit,
-        offset: serverOffset, // ✅ toujours number
-        status: status.trim() || undefined, // ✅ backend supporte
-        // ⚠️ NE PAS envoyer "name": le backend analyst.py ne le gère pas
-      });
+        offset: serverOffset,
+        status: status.trim() || undefined,
+        // backend analyst.py: filtres status/provider/kind (pas de name) -> donc name reste local
+      })) as ListResponseShape;
 
-      const items = Array.isArray(res) ? res : (res.items || []);
-      setServerItems(items as ScreeningListItem[]);
+      const { items, total } = extractItemsAndTotal(res);
+
+      setServerItems(items);
+      setServerTotal(total);
 
       // pagination UI
       setOffset(nameMode ? nextOffset : serverOffset);
     } catch (e: any) {
       const raw = e?.response?.data?.detail || e?.message || String(e);
       setErr(frError(String(raw)));
+      setServerItems([]);
+      setServerTotal(null);
     } finally {
       setBusy(false);
     }
   }
 
   function applyFilters() {
-    // retour page 1
     setOffset(0);
     // reload côté serveur (status) + local (name)
     setTimeout(() => load(0), 0);
@@ -164,9 +198,8 @@ export default function ScreeningsList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // si l’utilisateur tape un nom, on repasse en pagination locale
+  // si l’utilisateur passe de name vide -> name non vide (ou l’inverse), on recharge
   useEffect(() => {
-    // quand on passe en nameMode, on recharge en mode "gros fetch"
     setOffset(0);
     setTimeout(() => load(0), 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,8 +208,13 @@ export default function ScreeningsList() {
   const subtitle = useMemo(() => {
     if (busy) return "Chargement…";
     if (total === 0) return "Aucun résultat.";
-    return `Affichage ${pageFrom}-${pageTo} sur ${total}.`;
-  }, [busy, total, pageFrom, pageTo]);
+    const suffix = nameMode
+      ? ` (filtre nom local sur ${serverItems.length}/${SERVER_MAX} max)`
+      : serverTotal == null
+      ? " (total inconnu)"
+      : "";
+    return `Affichage ${pageFrom}-${pageTo} sur ${total}.${suffix}`;
+  }, [busy, total, pageFrom, pageTo, nameMode, serverItems.length, serverTotal]);
 
   return (
     <div className="page">
@@ -200,11 +238,16 @@ export default function ScreeningsList() {
 
         {/* Filters */}
         <div className="screen" style={{ marginBottom: 14 }}>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}
+          >
             <div style={{ minWidth: 0 }}>
-              <div className="h2" style={{ margin: 0 }}>Filtres</div>
+              <div className="h2" style={{ margin: 0 }}>
+                Filtres
+              </div>
               <div className="small">
-                Statut filtré côté serveur. Nom/Prénoms filtré côté interface (pagination locale).
+                Statut filtré côté serveur. Nom/Prénoms filtré côté interface (fetch large puis pagination locale).
               </div>
             </div>
 
@@ -231,6 +274,11 @@ export default function ScreeningsList() {
                   if (e.key === "Enter") applyFilters();
                 }}
               />
+              <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
+                {nameMode
+                  ? `Mode nom: fetch ${SERVER_MAX} max puis filtre local.`
+                  : "Mode normal: pagination serveur (plus fiable)."}
+              </div>
             </div>
 
             <div className="field">
@@ -302,7 +350,9 @@ export default function ScreeningsList() {
         <div className="screen">
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div>
-              <div className="h2" style={{ margin: 0 }}>Résultats</div>
+              <div className="h2" style={{ margin: 0 }}>
+                Résultats
+              </div>
               <div className="small">Cliquez sur “Ouvrir” pour accéder aux détails.</div>
             </div>
 
@@ -340,7 +390,7 @@ export default function ScreeningsList() {
                 <tr>
                   <th style={{ width: 320 }}>Client</th>
                   <th style={{ width: 170 }}>Statut</th>
-                  <th style={{ width: 240 }}>Dossier</th>
+                  <th style={{ width: 240 }}>Case ID</th>
                   <th style={{ width: 200 }}>Créé le</th>
                   <th style={{ width: 200 }}>Terminé le</th>
                   <th style={{ width: 130 }}></th>
