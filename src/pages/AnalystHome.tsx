@@ -19,14 +19,21 @@ import { downloadScreeningExportPdf, getScreeningDetails } from "../api";
  * }
  */
 
-type AnyObj = Record<string, any>;
+type AnyObj = Record<string, unknown>;
+
+type DecisionEntry = {
+  decision?: string | null;
+  comment?: string | null;
+  decided_by_email?: string | null;
+  decided_at?: string | null;
+};
 
 type ScreeningDetailsResp = {
   request: AnyObj;
   result?: AnyObj | null;
-  matches: any[];
-  decision_latest?: AnyObj | null;
-  decision_history?: AnyObj[];
+  matches: AnyObj[];
+  decision_latest?: DecisionEntry | null;
+  decision_history?: DecisionEntry[];
 };
 
 type Identity = {
@@ -45,6 +52,14 @@ type BadgeProps = {
   title?: string;
 };
 
+type InputFieldProps = {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  hint?: string;
+};
+
 type FormState = {
   lastName: string;
   firstName: string;
@@ -52,14 +67,14 @@ type FormState = {
   docNo: string;
 };
 
-function confidenceLabel(c: any) {
+function confidenceLabel(c: number | null | undefined) {
   if (typeof c !== "number") return { label: "—", tone: "badge" };
   if (c >= 0.85) return { label: "Très fiable", tone: "badge badge-ok" };
   if (c >= 0.7) return { label: "Correct", tone: "badge badge-warn" };
   return { label: "Faible", tone: "badge badge-bad" };
 }
 
-function pct(c: any) {
+function pct(c: number | null | undefined) {
   if (typeof c !== "number") return "—";
   return `${Math.round(c * 100)}%`;
 }
@@ -72,7 +87,7 @@ function Badge({ children, className, title }: BadgeProps) {
   );
 }
 
-function statusBadgeClass(status: any) {
+function statusBadgeClass(status: unknown) {
   const v = String(status || "").toUpperCase();
   if (["DONE", "APPROVED", "PASS"].includes(v)) return "badge badge-ok";
   if (["RUNNING", "PENDING", "PENDING_REVIEW", "MANUAL_REVIEW"].includes(v)) return "badge badge-warn";
@@ -80,30 +95,30 @@ function statusBadgeClass(status: any) {
   return "badge";
 }
 
-function humanDecision(d: any) {
+function humanDecision(d: unknown) {
   const v = String(d || "").toUpperCase();
   if (v === "PASS") return "✅ PASS";
   if (v === "BLOCK") return "⛔ BLOCK";
   return v || "—";
 }
 
-function fmtDate(s: any) {
+function fmtDate(s: unknown) {
   if (!s) return "-";
   try {
-    return new Date(s).toLocaleString();
+    return new Date(String(s)).toLocaleString();
   } catch {
     return String(s);
   }
 }
 
-function toPct(n: any) {
+function toPct(n: unknown) {
   const x = Number(n);
   if (!Number.isFinite(x)) return null;
   const p = x <= 1 ? x * 100 : x;
   return `${Math.round(p)}%`;
 }
 
-function humanProvider(p: any) {
+function humanProvider(p: unknown) {
   const v = String(p || "").toUpperCase();
   if (!v) return "-";
   if (v === "INTERNAL") return "Interne";
@@ -111,7 +126,7 @@ function humanProvider(p: any) {
   return v;
 }
 
-function humanAction(a: any) {
+function humanAction(a: unknown) {
   const v = String(a || "").toUpperCase();
   if (!v) return "-";
   if (v === "PASS") return "✅ Autoriser (Pass)";
@@ -120,7 +135,7 @@ function humanAction(a: any) {
   return v;
 }
 
-function humanRisk(r: any) {
+function humanRisk(r: unknown) {
   const v = String(r || "").toUpperCase();
   if (!v) return "-";
   if (v === "LOW") return "Faible";
@@ -129,7 +144,7 @@ function humanRisk(r: any) {
   return v;
 }
 
-function safeStr(x: any) {
+function safeStr(x: unknown) {
   const v = x == null ? "" : String(x);
   return v.trim();
 }
@@ -138,7 +153,7 @@ function isIsoDateLike(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
 
-function splitName(full: any) {
+function splitName(full: unknown) {
   const s = safeStr(full);
   if (!s) return { firstName: "", lastName: "" };
   const parts = s.split(/\s+/).filter(Boolean);
@@ -149,64 +164,65 @@ function splitName(full: any) {
 // ------------------------------------------------------------
 // ✅ Identity & documents : NE DEPEND PAS DE data.case
 // ------------------------------------------------------------
-function pickBestDocExtractedFieldsFromPayload(payload: any) {
-  const payloadDocs = Array.isArray(payload?.documents) ? payload.documents : [];
-  const withFields = payloadDocs.filter((d: any) => d?.extracted_fields || d?.extractedFields);
+function pickBestDocExtractedFieldsFromPayload(payload: AnyObj | null | undefined) {
+  const docs = (payload as any)?.documents;
+  const payloadDocs: any[] = Array.isArray(docs) ? docs : [];
+  const withFields = payloadDocs.filter((d) => d?.extracted_fields || d?.extractedFields);
   if (withFields.length === 0) return null;
   return withFields[0].extracted_fields ?? withFields[0].extractedFields ?? null;
 }
 
 function pickIdentity(data: ScreeningDetailsResp | null): Identity {
   const req = data?.request ?? null;
-  const payload = req?.request_payload ?? null;
+  const payload = (req as any)?.request_payload ?? null;
 
   const docExtracted = pickBestDocExtractedFieldsFromPayload(payload);
   const ocrFields =
-    payload?.document_fields ||
-    payload?.documentFields ||
-    payload?.extracted_fields ||
-    payload?.extractedFields ||
-    payload?.ocr ||
+    (payload as any)?.document_fields ||
+    (payload as any)?.documentFields ||
+    (payload as any)?.extracted_fields ||
+    (payload as any)?.extractedFields ||
+    (payload as any)?.ocr ||
     docExtracted ||
     null;
 
-  const clientName = safeStr(req?.client_name || req?.clientName || payload?.name || payload?.full_name || "");
+  const clientName = safeStr((req as any)?.client_name || (req as any)?.clientName || (payload as any)?.name || (payload as any)?.full_name || "");
   const split = clientName ? splitName(clientName) : { firstName: "", lastName: "" };
 
   const lastName =
-    split.lastName ??
-    ocrFields?.last_name ??
-    ocrFields?.lastName ??
-    payload?.last_name ??
-    payload?.lastName ??
+    (split as any).lastName ??
+    (ocrFields as any)?.last_name ??
+    (ocrFields as any)?.lastName ??
+    (payload as any)?.last_name ??
+    (payload as any)?.lastName ??
     "";
 
   const firstName =
-    split.firstName ??
-    ocrFields?.first_name ??
-    ocrFields?.firstName ??
-    payload?.first_name ??
-    payload?.firstName ??
+    (split as any).firstName ??
+    (ocrFields as any)?.first_name ??
+    (ocrFields as any)?.firstName ??
+    (payload as any)?.first_name ??
+    (payload as any)?.firstName ??
     "";
 
   const dob =
-    ocrFields?.date_of_birth ??
-    ocrFields?.dob ??
-    payload?.dob ??
-    payload?.date_of_birth ??
-    payload?.dateOfBirth ??
+    (ocrFields as any)?.date_of_birth ??
+    (ocrFields as any)?.dob ??
+    (payload as any)?.dob ??
+    (payload as any)?.date_of_birth ??
+    (payload as any)?.dateOfBirth ??
     "";
 
   const docNo =
-    ocrFields?.document_number ??
-    ocrFields?.documentNumber ??
-    payload?.document_number ??
-    payload?.documentNumber ??
+    (ocrFields as any)?.document_number ??
+    (ocrFields as any)?.documentNumber ??
+    (payload as any)?.document_number ??
+    (payload as any)?.documentNumber ??
     "";
 
-  const nationality = payload?.nationality ?? "";
-  const country = payload?.country ?? "";
-  const countryFocus = payload?.country_focus ?? payload?.countryFocus ?? "";
+  const nationality = (payload as any)?.nationality ?? "";
+  const country = (payload as any)?.country ?? "";
+  const countryFocus = (payload as any)?.country_focus ?? (payload as any)?.countryFocus ?? "";
 
   return {
     lastName: safeStr(lastName),
@@ -219,25 +235,39 @@ function pickIdentity(data: ScreeningDetailsResp | null): Identity {
   };
 }
 
-function getDisplayNameFromIdentity(i: Identity, payload: any) {
-  const override = payload?.override_name;
+function getDisplayNameFromIdentity(i: Identity, payload: AnyObj | null) {
+  const override = (payload as any)?.override_name;
   if (override && String(override).trim()) return String(override).trim();
 
   const n = [i.firstName, i.lastName].filter(Boolean).join(" ").trim();
   if (n) return n;
 
-  const company = payload?.company_name || payload?.companyName;
+  const company = (payload as any)?.company_name || (payload as any)?.companyName;
   if (company) return String(company).trim();
 
-  const payloadName = payload?.name;
+  const payloadName = (payload as any)?.name;
   if (payloadName) return String(payloadName).trim();
 
   return "-";
 }
 
-function pickDocuments(data: ScreeningDetailsResp | null) {
-  const payload = data?.request?.request_payload ?? null;
-  const payloadDocs = Array.isArray(payload?.documents) ? payload.documents : [];
+type DocItem = {
+  id?: unknown;
+  name?: unknown;
+  original_filename?: unknown;
+  mime?: unknown;
+  preview_url?: unknown;
+  download_url?: unknown;
+  ocr_status?: unknown;
+  ocr_confidence: number | null;
+  extracted_fields?: unknown;
+  doc_type?: unknown;
+  uploaded_at?: unknown;
+};
+
+function pickDocuments(data: ScreeningDetailsResp | null): DocItem[] {
+  const payload = (data?.request as any)?.request_payload ?? null;
+  const payloadDocs = Array.isArray((payload as any)?.documents) ? ((payload as any).documents as any[]) : [];
   if (!Array.isArray(payloadDocs)) return [];
 
   return payloadDocs.map((d: any) => ({
@@ -261,12 +291,12 @@ function pickDocuments(data: ScreeningDetailsResp | null) {
 }
 
 function pickMainOcrMeta(data: ScreeningDetailsResp | null) {
-  const payload = data?.request?.request_payload ?? null;
+  const payload = (data?.request as any)?.request_payload ?? null;
   const docs = pickDocuments(data);
 
   const withOcr = docs
-    .filter((d: any) => d?.ocr_status || typeof d?.ocr_confidence === "number")
-    .sort((a: any, b: any) => Number(b.ocr_confidence ?? 0) - Number(a.ocr_confidence ?? 0));
+    .filter((d) => d?.ocr_status || typeof d?.ocr_confidence === "number")
+    .sort((a, b) => Number(b.ocr_confidence ?? 0) - Number(a.ocr_confidence ?? 0));
 
   if (withOcr.length > 0) {
     return {
@@ -275,15 +305,15 @@ function pickMainOcrMeta(data: ScreeningDetailsResp | null) {
     };
   }
 
-  const st = payload?.ocr_status ?? payload?.ocrStatus ?? null;
-  const cf = payload?.ocr_confidence ?? payload?.ocrConfidence ?? null;
+  const st = (payload as any)?.ocr_status ?? (payload as any)?.ocrStatus ?? null;
+  const cf = (payload as any)?.ocr_confidence ?? (payload as any)?.ocrConfidence ?? null;
   return {
     status: st ? String(st) : null,
     confidence: typeof cf === "number" ? cf : cf == null ? null : Number(cf),
   };
 }
 
-function asText(v: any) {
+function asText(v: unknown) {
   if (v == null) return "";
   if (typeof v === "string") return v.trim();
   if (typeof v === "number" || typeof v === "boolean") return String(v);
@@ -294,7 +324,7 @@ function asText(v: any) {
   }
 }
 
-function looksLikeUrl(s: any) {
+function looksLikeUrl(s: unknown) {
   return /^https?:\/\/\S+$/i.test(String(s || "").trim());
 }
 
@@ -304,7 +334,20 @@ function looksLikeUrl(s: any) {
  * - match_explain.bullets / raw
  * - source_block (label, ref, program, record_type, listed_on, unlisted_on, summary, links)
  */
-function normalizeMatches(raw: any[]) {
+type NormalizedMatch = {
+  name: string;
+  score: number | null;
+  band: string | null;
+  sourceBlock: AnyObj | null;
+  sanctionBullets: unknown[];
+  sanctionRaw: unknown | null;
+  matchBullets: unknown[];
+  matchRaw: unknown | null;
+  reasonsHuman: unknown | null;
+  raw: AnyObj;
+};
+
+function normalizeMatches(raw: AnyObj[]): NormalizedMatch[] {
   if (!Array.isArray(raw)) return [];
   return raw.slice(0, 80).map((m: any) => {
     const name = m?.entity_name || m?.entity_primary_name || m?.name || "-";
@@ -340,19 +383,7 @@ function normalizeMatches(raw: any[]) {
   });
 }
 
-function InputField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  hint?: string;
-}) {
+function InputField({ label, value, onChange, placeholder, hint }: InputFieldProps) {
   return (
     <div style={{ display: "grid", gap: 6 }}>
       <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
@@ -369,11 +400,11 @@ function InputField({
   );
 }
 
-function renderBulletsOrFallback(bullets: any, fallback: any) {
+function renderBulletsOrFallback(bullets: unknown, fallback: unknown) {
   if (Array.isArray(bullets) && bullets.length > 0) {
     return (
       <ul className="match-ul">
-        {bullets.slice(0, 12).map((b: any, i: number) => (
+        {bullets.slice(0, 12).map((b, i) => (
           <li key={i}>{String(b)}</li>
         ))}
       </ul>
@@ -381,12 +412,12 @@ function renderBulletsOrFallback(bullets: any, fallback: any) {
   }
   return (
     <div className="small" style={{ opacity: 0.9 }}>
-      {fallback}
+      {String(fallback ?? "")}
     </div>
   );
 }
 
-function renderRawDetails(raw: any, title = "Voir détails bruts") {
+function renderRawDetails(raw: unknown, title = "Voir détails bruts") {
   if (raw == null) return null;
   return (
     <details className="match-details">
@@ -399,7 +430,7 @@ function renderRawDetails(raw: any, title = "Voir détails bruts") {
   );
 }
 
-function decisionBadgeClass(decision: any) {
+function decisionBadgeClass(decision: unknown) {
   const v = String(decision || "").toUpperCase();
   if (v === "PASS") return "badge badge-ok";
   if (v === "BLOCK") return "badge badge-bad";
@@ -407,33 +438,30 @@ function decisionBadgeClass(decision: any) {
 }
 
 // ✅ prend la décision UNIQUEMENT depuis data.decision_latest / data.decision_history
-function pickDecisionLatest(data: ScreeningDetailsResp | null) {
-  return (data as any)?.decision_latest ?? (data as any)?.decisionLatest ?? (data as any)?.analyst_decision_latest ?? null;
+function pickDecisionLatest(data: ScreeningDetailsResp | null): DecisionEntry | null {
+  const anyData = data as any;
+  return anyData?.decision_latest ?? anyData?.decisionLatest ?? anyData?.analyst_decision_latest ?? null;
 }
 
-function pickDecisionHistory(data: ScreeningDetailsResp | null) {
-  const h =
-    (data as any)?.decision_history ??
-    (data as any)?.decisionHistory ??
-    (data as any)?.analyst_decision_history ??
-    (data as any)?.analystDecisionHistory ??
-    [];
+function pickDecisionHistory(data: ScreeningDetailsResp | null): DecisionEntry[] {
+  const anyData = data as any;
+  const h = anyData?.decision_history ?? anyData?.decisionHistory ?? anyData?.analyst_decision_history ?? anyData?.analystDecisionHistory ?? [];
   return Array.isArray(h) ? h : [];
 }
 
 export default function ScreeningDetails() {
   const { id } = useParams<{ id: string }>();
 
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<boolean>(false);
   const [err, setErr] = useState<string | null>(null);
   const [data, setData] = useState<ScreeningDetailsResp | null>(null);
-  const [showTech, setShowTech] = useState(false);
+  const [showTech, setShowTech] = useState<boolean>(false);
 
   const request = data?.request ?? null;
   const result = data?.result ?? null;
-  const matchesRaw = Array.isArray(data?.matches) ? data.matches : [];
+  const matchesRaw: AnyObj[] = Array.isArray(data?.matches) ? data!.matches : [];
 
-  const requestPayload = useMemo(() => request?.request_payload ?? null, [request]);
+  const requestPayload = useMemo<AnyObj | null>(() => ((request as any)?.request_payload ?? null), [request]);
 
   const identity = useMemo(() => pickIdentity(data), [data]);
   const displayName = useMemo(() => getDisplayNameFromIdentity(identity, requestPayload), [identity, requestPayload]);
@@ -442,31 +470,33 @@ export default function ScreeningDetails() {
   const mainOcr = useMemo(() => pickMainOcrMeta(data), [data]);
   const matches = useMemo(() => normalizeMatches(matchesRaw), [matchesRaw]);
 
-  const createdAt = request?.created_at || request?.createdAt || null;
-  const completedAt = request?.completed_at || request?.completedAt || null;
+  const createdAt = (request as any)?.created_at || (request as any)?.createdAt || null;
+  const completedAt = (request as any)?.completed_at || (request as any)?.completedAt || null;
 
   // ✅ Décisions (read-only) : ne plus dépendre de data.case.*
   const decisionLatest = useMemo(() => pickDecisionLatest(data), [data]);
   const decisionHistory = useMemo(() => pickDecisionHistory(data), [data]);
 
   const summary = useMemo(() => {
-    const risk = result?.risk_level ?? result?.riskLevel ?? null;
-    const confidence = result?.confidence ?? null;
-    const action = result?.recommended_action ?? result?.recommendedAction ?? null;
+    const r: any = result || {};
+    const risk = r?.risk_level ?? r?.riskLevel ?? null;
+    const confidence = r?.confidence ?? null;
+    const action = r?.recommended_action ?? r?.recommendedAction ?? null;
     return { risk, confidence, action };
   }, [result]);
 
-  const dossierLabel = displayName && displayName !== "-" ? displayName : request?.client_id || "-";
+  const dossierLabel = displayName && displayName !== "-" ? displayName : (request as any)?.client_id || "-";
 
   async function load() {
     if (!id) return;
     setBusy(true);
     setErr(null);
     try {
-      const d: any = await getScreeningDetails(id);
+      const d = (await getScreeningDetails(id)) as unknown;
       setData(d as ScreeningDetailsResp);
-    } catch (e: any) {
-      setErr(e?.response?.data?.detail || e?.message || String(e));
+    } catch (e: unknown) {
+      const anyE = e as any;
+      setErr(anyE?.response?.data?.detail || anyE?.message || String(anyE));
       setData(null);
     } finally {
       setBusy(false);
@@ -481,7 +511,7 @@ export default function ScreeningDetails() {
   // ----------------------------
   // (Optionnel) Formulaire analyst - reste local tant que l’API save n’est pas branchée
   // ----------------------------
-  const didInitRef = useRef(false);
+  const didInitRef = useRef<boolean>(false);
   const baselineRef = useRef<FormState | null>(null);
   const ocrRef = useRef<FormState | null>(null);
 
@@ -496,13 +526,13 @@ export default function ScreeningDetails() {
   }, [identity]);
 
   const computedOcr = useMemo<FormState>(() => {
-    const best = docs.find((d: any) => d?.extracted_fields) || null;
-    const f = best?.extracted_fields || requestPayload?.extracted_fields || requestPayload?.document_fields || null;
+    const best = docs.find((d) => (d as any)?.extracted_fields) || null;
+    const f = (best as any)?.extracted_fields || (requestPayload as any)?.extracted_fields || (requestPayload as any)?.document_fields || null;
 
-    const ln = safeStr(f?.last_name ?? f?.lastName ?? identity?.lastName);
-    const fn = safeStr(f?.first_name ?? f?.firstName ?? identity?.firstName);
-    const dob = safeStr(f?.date_of_birth ?? f?.dob ?? identity?.dob);
-    const docNo = safeStr(f?.document_number ?? f?.documentNumber ?? identity?.docNo);
+    const ln = safeStr((f as any)?.last_name ?? (f as any)?.lastName ?? identity?.lastName);
+    const fn = safeStr((f as any)?.first_name ?? (f as any)?.firstName ?? identity?.firstName);
+    const dob = safeStr((f as any)?.date_of_birth ?? (f as any)?.dob ?? identity?.dob);
+    const docNo = safeStr((f as any)?.document_number ?? (f as any)?.documentNumber ?? identity?.docNo);
 
     return { lastName: ln, firstName: fn, dob, docNo };
   }, [docs, requestPayload, identity]);
@@ -537,9 +567,7 @@ export default function ScreeningDetails() {
   const isModified = useMemo(() => {
     const base = baselineRef.current;
     if (!base) return false;
-    return (
-      form.lastName !== base.lastName || form.firstName !== base.firstName || form.dob !== base.dob || form.docNo !== base.docNo
-    );
+    return form.lastName !== base.lastName || form.firstName !== base.firstName || form.dob !== base.dob || form.docNo !== base.docNo;
   }, [form]);
 
   function setField(k: keyof FormState, v: string) {
@@ -607,15 +635,15 @@ export default function ScreeningDetails() {
                       Résumé
                     </div>
                     <div className="small" style={{ opacity: 0.9 }}>
-                      Screening #{request?.id ?? id} — {humanProvider(request?.provider)} — {fmtDate(createdAt)}
+                      Screening #{(request as any)?.id ?? id} — {humanProvider((request as any)?.provider)} — {fmtDate(createdAt)}
                     </div>
                   </div>
 
                   <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <button
                       className="btn"
-                      onClick={() => downloadScreeningExportPdf(String(request?.id ?? id))}
-                      disabled={!request?.id && !id}
+                      onClick={() => downloadScreeningExportPdf(String((request as any)?.id ?? id))}
+                      disabled={!(request as any)?.id && !id}
                       title="Télécharger un PDF (partageable)"
                     >
                       ⬇️ Export PDF
@@ -629,8 +657,8 @@ export default function ScreeningDetails() {
                 <div style={{ height: 12 }} />
 
                 <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                  <Badge className={statusBadgeClass(request?.status)} title="État actuel du screening">
-                    Statut: {request?.status || "-"}
+                  <Badge className={statusBadgeClass((request as any)?.status)} title="État actuel du screening">
+                    Statut: {(request as any)?.status || "-"}
                   </Badge>
 
                   <Badge title="Nom du client screené">
@@ -667,7 +695,7 @@ export default function ScreeningDetails() {
                     </div>
 
                     <span className="badge">
-                      Dernière: <b>{decisionLatest ? humanDecision((decisionLatest as any).decision) : "—"}</b>
+                      Dernière: <b>{decisionLatest ? humanDecision(decisionLatest.decision) : "—"}</b>
                     </span>
                   </div>
 
@@ -680,24 +708,24 @@ export default function ScreeningDetails() {
                   ) : (
                     <div style={{ display: "grid", gap: 8 }}>
                       <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                        <span className={decisionBadgeClass((decisionLatest as any).decision)}>
-                          Décision: <b>{humanDecision((decisionLatest as any).decision)}</b>
+                        <span className={decisionBadgeClass(decisionLatest.decision)}>
+                          Décision: <b>{humanDecision(decisionLatest.decision)}</b>
                         </span>
-                        {(decisionLatest as any).decided_by_email ? (
+                        {decisionLatest.decided_by_email ? (
                           <span className="badge">
-                            par: <b>{(decisionLatest as any).decided_by_email}</b>
+                            par: <b>{decisionLatest.decided_by_email}</b>
                           </span>
                         ) : null}
-                        {(decisionLatest as any).decided_at ? (
+                        {decisionLatest.decided_at ? (
                           <span className="badge">
-                            le: <b>{fmtDate((decisionLatest as any).decided_at)}</b>
+                            le: <b>{fmtDate(decisionLatest.decided_at)}</b>
                           </span>
                         ) : null}
                       </div>
 
-                      {(decisionLatest as any).comment ? (
+                      {decisionLatest.comment ? (
                         <div style={{ opacity: 0.95, lineHeight: 1.6 }}>
-                          <b>Raison :</b> {String((decisionLatest as any).comment)}
+                          <b>Raison :</b> {String(decisionLatest.comment)}
                         </div>
                       ) : (
                         <div className="small" style={{ opacity: 0.85 }}>
@@ -715,7 +743,7 @@ export default function ScreeningDetails() {
                     </summary>
                     <div style={{ height: 10 }} />
                     <div style={{ display: "grid", gap: 10 }}>
-                      {decisionHistory.slice(0, 50).map((d: any, i: number) => (
+                      {decisionHistory.slice(0, 50).map((d, i) => (
                         <div
                           key={i}
                           style={{
@@ -757,7 +785,7 @@ export default function ScreeningDetails() {
 
                   <div className="pill-row">
                     <span className="badge">
-                      ocr_status: <b style={{ marginLeft: 6 }}>{mainOcr.status || "—"}</b>
+                      ocr_status: <b style={{ marginLeft: 6 }}>{String(mainOcr.status || "—")}</b>
                     </span>
                     <span className="badge">
                       conf globale: <b style={{ marginLeft: 6 }}>{pct(mainOcr.confidence)}</b>
@@ -800,15 +828,15 @@ export default function ScreeningDetails() {
 
                 {docs.length > 0 ? (
                   <div style={{ display: "grid", gap: 12 }}>
-                    {docs.map((d: any, idx: number) => {
-                      const preview = d.preview_url;
-                      const download = d.download_url;
+                    {docs.map((d, idx) => {
+                      const preview = safeStr((d as any).preview_url);
+                      const download = safeStr((d as any).download_url);
 
-                      const mime = d.mime || "";
+                      const mime = safeStr((d as any).mime);
                       const isImage = mime.startsWith("image/");
-                      const isPdf = mime === "application/pdf" || String(d.original_filename || "").toLowerCase().endsWith(".pdf");
+                      const isPdf = mime === "application/pdf" || safeStr((d as any).original_filename).toLowerCase().endsWith(".pdf");
 
-                      const title = d.original_filename || d.name || `Document ${idx + 1}`;
+                      const title = safeStr((d as any).original_filename || (d as any).name || `Document ${idx + 1}`);
 
                       return (
                         <div
@@ -824,9 +852,9 @@ export default function ScreeningDetails() {
                             <div style={{ minWidth: 0 }}>
                               <div style={{ fontWeight: 800 }}>{title}</div>
                               <div className="small" style={{ opacity: 0.85, marginTop: 4 }}>
-                                {d.doc_type ? (
+                                {(d as any).doc_type ? (
                                   <>
-                                    Type: <b>{d.doc_type}</b> ·{" "}
+                                    Type: <b>{String((d as any).doc_type)}</b> ·{" "}
                                   </>
                                 ) : null}
                                 {mime ? (
@@ -834,14 +862,14 @@ export default function ScreeningDetails() {
                                     MIME: <b>{mime}</b> ·{" "}
                                   </>
                                 ) : null}
-                                {d.ocr_status ? (
+                                {(d as any).ocr_status ? (
                                   <>
-                                    OCR: <b>{d.ocr_status}</b> ·{" "}
+                                    OCR: <b>{String((d as any).ocr_status)}</b> ·{" "}
                                   </>
                                 ) : null}
-                                {typeof d.ocr_confidence === "number" ? (
+                                {typeof (d as any).ocr_confidence === "number" ? (
                                   <>
-                                    Conf: <b>{Math.round(d.ocr_confidence * 100)}%</b>
+                                    Conf: <b>{Math.round(((d as any).ocr_confidence as number) * 100)}%</b>
                                   </>
                                 ) : null}
                               </div>
@@ -968,12 +996,13 @@ export default function ScreeningDetails() {
                   </div>
                 ) : (
                   <div className="match-list">
-                    {matches.map((m: any, idx: number) => {
+                    {matches.map((m, idx) => {
                       const scorePct = toPct(m.score);
                       const scoreN = typeof m.score === "number" ? m.score : null;
 
                       const tone = scoreN != null && scoreN >= 90 ? "badge badge-bad" : scoreN != null && scoreN >= 75 ? "badge badge-warn" : "badge";
-                      const sb = m.sourceBlock;
+
+                      const sb: any = m.sourceBlock;
 
                       return (
                         <div className="match-card" key={idx}>
@@ -1075,7 +1104,7 @@ export default function ScreeningDetails() {
                             </summary>
                             <div style={{ height: 10 }} />
                             {renderBulletsOrFallback(m.matchBullets, m.reasonsHuman || "Correspondance détectée par le moteur (détails techniques disponibles).")}
-                            {renderRawDetails(m.matchRaw ?? m.raw?.reasons ?? m.raw, "Voir raisons brutes (matching)")}
+                            {renderRawDetails(m.matchRaw ?? (m.raw as any)?.reasons ?? m.raw, "Voir raisons brutes (matching)")}
                           </details>
                         </div>
                       );
@@ -1134,8 +1163,8 @@ export default function ScreeningDetails() {
                   </Link>
                   <button
                     className="btn secondary"
-                    onClick={() => downloadScreeningExportPdf(String(request?.id ?? id))}
-                    disabled={!request?.id && !id}
+                    onClick={() => downloadScreeningExportPdf(String((request as any)?.id ?? id))}
+                    disabled={!(request as any)?.id && !id}
                   >
                     ⬇️ Export PDF
                   </button>
