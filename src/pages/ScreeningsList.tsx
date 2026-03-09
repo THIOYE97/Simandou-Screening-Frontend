@@ -226,7 +226,7 @@ export default function ScreeningsList() {
               Console Screening
             </div>
             <div className="page-title">Screenings</div>
-            <div className="page-subtitle">Liste des screenings et accès rapide aux détails.</div>
+            <div className="page-subtitle"></div>
           </div>
 
           <div className="pill-row">
@@ -247,7 +247,7 @@ export default function ScreeningsList() {
                 Filtres
               </div>
               <div className="small">
-                Statut filtré côté serveur. Nom/Prénoms filtré côté interface (fetch large puis pagination locale).
+                
               </div>
             </div>
 
@@ -274,11 +274,7 @@ export default function ScreeningsList() {
                   if (e.key === "Enter") applyFilters();
                 }}
               />
-              <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
-                {nameMode
-                  ? `Mode nom: fetch ${SERVER_MAX} max puis filtre local.`
-                  : "Mode normal: pagination serveur (plus fiable)."}
-              </div>
+              
             </div>
 
             <div className="field">
@@ -293,7 +289,7 @@ export default function ScreeningsList() {
                 }}
               />
               <div className="small" style={{ marginTop: 6 }}>
-                Affichage traduit : DONE → Terminé.
+               
               </div>
             </div>
 
@@ -353,7 +349,7 @@ export default function ScreeningsList() {
               <div className="h2" style={{ margin: 0 }}>
                 Résultats
               </div>
-              <div className="small">Cliquez sur “Ouvrir” pour accéder aux détails.</div>
+             
             </div>
 
             <div className="row" style={{ gap: 8 }}>

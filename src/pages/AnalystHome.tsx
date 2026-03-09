@@ -1,598 +1,450 @@
-// src/pages/ScreeningDetails.tsx
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
-import { downloadScreeningExportPdf, getScreeningDetails } from "../api";
+// src/pages/AnalystHome.tsx
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  launchSimpleScreening,
+  uploadDocumentStandalone,
+  extractOcr,
+  screeningFromDocument,
+  downloadScreeningExportPdf,
+  setScreeningDecision,
+  getScreeningDetails,
+} from "../api";
+import type { SimpleScreeningIn, OcrExtractResp } from "../api";
 
-/**
- * ✅ OBJECTIF
- * - Page "details" 100% READ-ONLY pour la décision analyst :
- *   - on affiche seulement decision_latest + decision_history renvoyés par l’API
- *   - on NE va PLUS chercher dans data.case.*
- *
- * ✅ Hypothèse de payload API (aligné analyst.py récent) :
- * {
- *   request: {..., request_payload: {...}},
- *   result: {...},
- *   matches: [...],
- *   decision_latest: { decision, comment, decided_by_email, decided_at } | null,
- *   decision_history: [{...}, ...]
- * }
- */
+type Tab = "simple" | "ocr";
 
-type AnyObj = Record<string, unknown>;
-
-type DecisionEntry = {
-  decision?: string | null;
-  comment?: string | null;
-  decided_by_email?: string | null;
-  decided_at?: string | null;
+type FlowEvent = {
+  at: string; // ISO
+  title: string;
+  detail?: string;
 };
 
-type ScreeningDetailsResp = {
-  request: AnyObj;
-  result?: AnyObj | null;
-  matches: AnyObj[];
-  decision_latest?: DecisionEntry | null;
-  decision_history?: DecisionEntry[];
+type StepModal =
+  | { kind: "UPLOAD_DONE"; document_id: string; ocr_status?: string | null }
+  | {
+      kind: "OCR_DONE";
+      document_id: string;
+      ocr_status?: string | null;
+      ocr_confidence?: number | null;
+      fields: {
+        last_name: string;
+        first_name: string;
+        date_of_birth: string;
+        document_number: string;
+      };
+    };
+
+type ScreeningPopupData = {
+  request_id: string;
+  status?: string | null;
+
+  recommended_action?: string | null;
+  risk_level?: string | null;
+  confidence?: number | string | null;
+  matches_count?: number | null;
+
+  // decisions
+  decision_latest?: any | null;
+  decision_history?: any[];
+
+  mode: "OCR" | "SIMPLE";
+  name?: string;
 };
 
-type Identity = {
-  lastName: string;
-  firstName: string;
-  dob: string;
-  docNo: string;
-  nationality: string;
-  country: string;
-  countryFocus: string;
-};
-
-type BadgeProps = {
-  children: ReactNode;
-  className?: string;
-  title?: string;
-};
-
-type InputFieldProps = {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  hint?: string;
-};
-
-type FormState = {
-  lastName: string;
-  firstName: string;
-  dob: string;
-  docNo: string;
-};
-
-function confidenceLabel(c: number | null | undefined) {
-  if (typeof c !== "number") return { label: "—", tone: "badge" };
-  if (c >= 0.85) return { label: "Très fiable", tone: "badge badge-ok" };
-  if (c >= 0.7) return { label: "Correct", tone: "badge badge-warn" };
-  return { label: "Faible", tone: "badge badge-bad" };
+function nowIso() {
+  return new Date().toISOString();
 }
-
-function pct(c: number | null | undefined) {
-  if (typeof c !== "number") return "—";
-  return `${Math.round(c * 100)}%`;
-}
-
-function Badge({ children, className, title }: BadgeProps) {
-  return (
-    <span className={className || "badge"} title={title}>
-      {children}
-    </span>
-  );
-}
-
-function statusBadgeClass(status: unknown) {
-  const v = String(status || "").toUpperCase();
-  if (["DONE", "APPROVED", "PASS"].includes(v)) return "badge badge-ok";
-  if (["RUNNING", "PENDING", "PENDING_REVIEW", "MANUAL_REVIEW"].includes(v)) return "badge badge-warn";
-  if (["FAILED", "REJECTED", "ERROR", "BLOCK"].includes(v)) return "badge badge-bad";
-  return "badge";
-}
-
-function humanDecision(d: unknown) {
-  const v = String(d || "").toUpperCase();
-  if (v === "PASS") return "✅ PASS";
-  if (v === "BLOCK") return "⛔ BLOCK";
-  return v || "—";
-}
-
-function fmtDate(s: unknown) {
-  if (!s) return "-";
+function fmtDate(s: string) {
   try {
-    return new Date(String(s)).toLocaleString();
+    return new Date(s).toLocaleString();
   } catch {
-    return String(s);
+    return s;
   }
 }
 
-function toPct(n: unknown) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return null;
-  const p = x <= 1 ? x * 100 : x;
-  return `${Math.round(p)}%`;
-}
-
-function humanProvider(p: unknown) {
-  const v = String(p || "").toUpperCase();
-  if (!v) return "-";
-  if (v === "INTERNAL") return "Interne";
-  if (v === "SUMSUB") return "Sumsub";
-  return v;
-}
-
-function humanAction(a: unknown) {
+const actionLabel = (a?: string | null) => {
   const v = String(a || "").toUpperCase();
-  if (!v) return "-";
-  if (v === "PASS") return "✅ Autoriser (Pass)";
-  if (v === "MANUAL_REVIEW") return "🟠 Revue manuelle";
-  if (v === "BLOCK") return "⛔ Bloquer";
-  return v;
-}
-
-function humanRisk(r: unknown) {
+  if (!v) return "—";
+  if (v.includes("APPROVE") || v.includes("CLEAR") || v === "PASS") return "✅ Action recommandée : APPROUVER / PASS";
+  if (v.includes("REVIEW")) return "⚠️ Action recommandée : REVIEW (revue manuelle)";
+  if (v.includes("REJECT") || v.includes("BLOCK")) return "⛔ Action recommandée : REVOIR / BLOCK";
+  return `🔎 Action recommandée : ${v}`;
+};
+const humanRisk = (r?: string | null) => {
   const v = String(r || "").toUpperCase();
-  if (!v) return "-";
+  if (!v) return "—";
   if (v === "LOW") return "Faible";
   if (v === "MEDIUM") return "Moyen";
   if (v === "HIGH") return "Élevé";
   return v;
-}
-
-function safeStr(x: unknown) {
-  const v = x == null ? "" : String(x);
-  return v.trim();
-}
-
-function isIsoDateLike(v: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(v);
-}
-
-function splitName(full: unknown) {
-  const s = safeStr(full);
-  if (!s) return { firstName: "", lastName: "" };
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return { firstName: "", lastName: parts[0] };
-  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.slice(-1)[0] };
-}
-
-// ------------------------------------------------------------
-// ✅ Identity & documents : NE DEPEND PAS DE data.case
-// ------------------------------------------------------------
-function pickBestDocExtractedFieldsFromPayload(payload: AnyObj | null | undefined) {
-  const docs = (payload as any)?.documents;
-  const payloadDocs: any[] = Array.isArray(docs) ? docs : [];
-  const withFields = payloadDocs.filter((d) => d?.extracted_fields || d?.extractedFields);
-  if (withFields.length === 0) return null;
-  return withFields[0].extracted_fields ?? withFields[0].extractedFields ?? null;
-}
-
-function pickIdentity(data: ScreeningDetailsResp | null): Identity {
-  const req = data?.request ?? null;
-  const payload = (req as any)?.request_payload ?? null;
-
-  const docExtracted = pickBestDocExtractedFieldsFromPayload(payload);
-  const ocrFields =
-    (payload as any)?.document_fields ||
-    (payload as any)?.documentFields ||
-    (payload as any)?.extracted_fields ||
-    (payload as any)?.extractedFields ||
-    (payload as any)?.ocr ||
-    docExtracted ||
-    null;
-
-  const clientName = safeStr((req as any)?.client_name || (req as any)?.clientName || (payload as any)?.name || (payload as any)?.full_name || "");
-  const split = clientName ? splitName(clientName) : { firstName: "", lastName: "" };
-
-  const lastName =
-    (split as any).lastName ??
-    (ocrFields as any)?.last_name ??
-    (ocrFields as any)?.lastName ??
-    (payload as any)?.last_name ??
-    (payload as any)?.lastName ??
-    "";
-
-  const firstName =
-    (split as any).firstName ??
-    (ocrFields as any)?.first_name ??
-    (ocrFields as any)?.firstName ??
-    (payload as any)?.first_name ??
-    (payload as any)?.firstName ??
-    "";
-
-  const dob =
-    (ocrFields as any)?.date_of_birth ??
-    (ocrFields as any)?.dob ??
-    (payload as any)?.dob ??
-    (payload as any)?.date_of_birth ??
-    (payload as any)?.dateOfBirth ??
-    "";
-
-  const docNo =
-    (ocrFields as any)?.document_number ??
-    (ocrFields as any)?.documentNumber ??
-    (payload as any)?.document_number ??
-    (payload as any)?.documentNumber ??
-    "";
-
-  const nationality = (payload as any)?.nationality ?? "";
-  const country = (payload as any)?.country ?? "";
-  const countryFocus = (payload as any)?.country_focus ?? (payload as any)?.countryFocus ?? "";
-
-  return {
-    lastName: safeStr(lastName),
-    firstName: safeStr(firstName),
-    dob: safeStr(dob),
-    docNo: safeStr(docNo),
-    nationality: safeStr(nationality),
-    country: safeStr(country),
-    countryFocus: safeStr(countryFocus),
-  };
-}
-
-function getDisplayNameFromIdentity(i: Identity, payload: AnyObj | null) {
-  const override = (payload as any)?.override_name;
-  if (override && String(override).trim()) return String(override).trim();
-
-  const n = [i.firstName, i.lastName].filter(Boolean).join(" ").trim();
-  if (n) return n;
-
-  const company = (payload as any)?.company_name || (payload as any)?.companyName;
-  if (company) return String(company).trim();
-
-  const payloadName = (payload as any)?.name;
-  if (payloadName) return String(payloadName).trim();
-
-  return "-";
-}
-
-type DocItem = {
-  id?: unknown;
-  name?: unknown;
-  original_filename?: unknown;
-  mime?: unknown;
-  preview_url?: unknown;
-  download_url?: unknown;
-  ocr_status?: unknown;
-  ocr_confidence: number | null;
-  extracted_fields?: unknown;
-  doc_type?: unknown;
-  uploaded_at?: unknown;
+};
+const fmtConfidence = (c: any) => {
+  if (c == null || c === "") return "—";
+  const n = Number(c);
+  if (!Number.isFinite(n)) return String(c);
+  const p = n <= 1 ? n * 100 : n;
+  return `${Math.round(p)}%`;
 };
 
-function pickDocuments(data: ScreeningDetailsResp | null): DocItem[] {
-  const payload = (data?.request as any)?.request_payload ?? null;
-  const payloadDocs = Array.isArray((payload as any)?.documents) ? ((payload as any).documents as any[]) : [];
-  if (!Array.isArray(payloadDocs)) return [];
-
-  return payloadDocs.map((d: any) => ({
-    id: d?.id ?? d?.document_id ?? d?.doc_id,
-    name: d?.name,
-    original_filename: d?.original_filename ?? d?.originalFilename ?? d?.filename,
-    mime: d?.mime ?? d?.mime_type ?? d?.contentType,
-    preview_url: d?.preview_url ?? d?.previewUrl,
-    download_url: d?.download_url ?? d?.downloadUrl,
-    ocr_status: d?.ocr_status ?? d?.ocrStatus,
-    ocr_confidence: (() => {
-      const v = d?.ocr_confidence ?? d?.ocrConfidence;
-      if (typeof v === "number") return v;
-      if (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v))) return Number(v);
-      return null;
-    })(),
-    extracted_fields: d?.extracted_fields ?? d?.extractedFields,
-    doc_type: d?.doc_type ?? d?.docType,
-    uploaded_at: d?.uploaded_at ?? d?.uploadedAt,
-  }));
+function decisionHuman(v?: string | null) {
+  const x = String(v || "").toUpperCase();
+  if (!x) return "—";
+  if (x === "PASS") return "✅ PASS";
+  if (x === "BLOCK") return "⛔ BLOCK";
+  return x;
 }
 
-function pickMainOcrMeta(data: ScreeningDetailsResp | null) {
-  const payload = (data?.request as any)?.request_payload ?? null;
-  const docs = pickDocuments(data);
+export default function AnalystHome() {
+  // ✅ Mettre le mode Simple en avant dès la connexion
+  const [tab, setTab] = useState<Tab>("simple");
+  const [busy, setBusy] = useState(false);
 
-  const withOcr = docs
-    .filter((d) => d?.ocr_status || typeof d?.ocr_confidence === "number")
-    .sort((a, b) => Number(b.ocr_confidence ?? 0) - Number(a.ocr_confidence ?? 0));
+  const [toast, setToast] = useState<{ tone?: "ok" | "warn" | "danger"; text: string } | null>(null);
 
-  if (withOcr.length > 0) {
-    return {
-      status: withOcr[0].ocr_status ?? null,
-      confidence: typeof withOcr[0].ocr_confidence === "number" ? withOcr[0].ocr_confidence : null,
-    };
-  }
+  // Flow events (audit UI in final modal)
+  const [flow, setFlow] = useState<FlowEvent[]>([]);
+  const pushFlow = (e: Omit<FlowEvent, "at"> & { at?: string }) =>
+    setFlow((prev) => [{ at: e.at || nowIso(), title: e.title, detail: e.detail }, ...prev].slice(0, 30));
 
-  const st = (payload as any)?.ocr_status ?? (payload as any)?.ocrStatus ?? null;
-  const cf = (payload as any)?.ocr_confidence ?? (payload as any)?.ocrConfidence ?? null;
-  return {
-    status: st ? String(st) : null,
-    confidence: typeof cf === "number" ? cf : cf == null ? null : Number(cf),
-  };
-}
+  // Step modals
+  const [stepModal, setStepModal] = useState<StepModal | null>(null);
 
-function asText(v: unknown) {
-  if (v == null) return "";
-  if (typeof v === "string") return v.trim();
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  try {
-    return JSON.stringify(v, null, 2);
-  } catch {
-    return String(v);
-  }
-}
+  // Final popup (screening result)
+  const [popup, setPopup] = useState<ScreeningPopupData | null>(null);
 
-function looksLikeUrl(s: unknown) {
-  return /^https?:\/\/\S+$/i.test(String(s || "").trim());
-}
+  // -----------------------------------
+  // SIMPLE screening (simplifié)
+  // -----------------------------------
+  const [entityType, setEntityType] = useState<"INDIVIDUAL" | "COMPANY">("INDIVIDUAL");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [maxMatches, setMaxMatches] = useState(20);
 
-/**
- * ✅ Normalisation alignée backend:
- * - sanction_explain.bullets / raw
- * - match_explain.bullets / raw
- * - source_block (label, ref, program, record_type, listed_on, unlisted_on, summary, links)
- */
-type NormalizedMatch = {
-  name: string;
-  score: number | null;
-  band: string | null;
-  sourceBlock: AnyObj | null;
-  sanctionBullets: unknown[];
-  sanctionRaw: unknown | null;
-  matchBullets: unknown[];
-  matchRaw: unknown | null;
-  reasonsHuman: unknown | null;
-  raw: AnyObj;
-};
+  const canLaunchSimple = useMemo(() => {
+    if (entityType === "INDIVIDUAL") return !!firstName.trim() && !!lastName.trim();
+    return !!companyName.trim();
+  }, [entityType, firstName, lastName, companyName]);
 
-function normalizeMatches(raw: AnyObj[]): NormalizedMatch[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.slice(0, 80).map((m: any) => {
-    const name = m?.entity_name || m?.entity_primary_name || m?.name || "-";
-    const score = m?.match_score ?? m?.matchScore ?? m?.score ?? null;
-    const band = m?.match_band_label || m?.match_band || m?.category || null;
-
-    const sb = m?.source_block || null;
-
-    const sanctionBullets = Array.isArray(m?.sanction_explain?.bullets) ? m.sanction_explain.bullets : [];
-    const sanctionRaw = m?.sanction_explain?.raw ?? null;
-
-    const matchBullets = Array.isArray(m?.match_explain?.bullets) ? m.match_explain.bullets : [];
-    const matchRaw = m?.match_explain?.raw ?? null;
-
-    const reasonsHuman = m?.reasons_human || null;
-
-    return {
-      name: String(name),
-      score: score == null ? null : Number(score),
-      band: band ? String(band) : null,
-
-      sourceBlock: sb,
-
-      sanctionBullets,
-      sanctionRaw,
-
-      matchBullets,
-      matchRaw,
-
-      reasonsHuman,
-      raw: m,
-    };
-  });
-}
-
-function InputField({ label, value, onChange, placeholder, hint }: InputFieldProps) {
-  return (
-    <div style={{ display: "grid", gap: 6 }}>
-      <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
-        <div className="nice-label">{label}</div>
-      </div>
-
-      <input className="input" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
-      {hint ? (
-        <div className="small" style={{ opacity: 0.85 }}>
-          {hint}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function renderBulletsOrFallback(bullets: unknown, fallback: unknown) {
-  if (Array.isArray(bullets) && bullets.length > 0) {
-    return (
-      <ul className="match-ul">
-        {bullets.slice(0, 12).map((b, i) => (
-          <li key={i}>{String(b)}</li>
-        ))}
-      </ul>
-    );
-  }
-  return (
-    <div className="small" style={{ opacity: 0.9 }}>
-      {String(fallback ?? "")}
-    </div>
-  );
-}
-
-function renderRawDetails(raw: unknown, title = "Voir détails bruts") {
-  if (raw == null) return null;
-  return (
-    <details className="match-details">
-      <summary className="badge" style={{ cursor: "pointer" }}>
-        {title}
-      </summary>
-      <div style={{ height: 10 }} />
-      <pre className="match-pre">{JSON.stringify(raw, null, 2)}</pre>
-    </details>
-  );
-}
-
-function decisionBadgeClass(decision: unknown) {
-  const v = String(decision || "").toUpperCase();
-  if (v === "PASS") return "badge badge-ok";
-  if (v === "BLOCK") return "badge badge-bad";
-  return "badge";
-}
-
-// ✅ prend la décision UNIQUEMENT depuis data.decision_latest / data.decision_history
-function pickDecisionLatest(data: ScreeningDetailsResp | null): DecisionEntry | null {
-  const anyData = data as any;
-  return anyData?.decision_latest ?? anyData?.decisionLatest ?? anyData?.analyst_decision_latest ?? null;
-}
-
-function pickDecisionHistory(data: ScreeningDetailsResp | null): DecisionEntry[] {
-  const anyData = data as any;
-  const h = anyData?.decision_history ?? anyData?.decisionHistory ?? anyData?.analyst_decision_history ?? anyData?.analystDecisionHistory ?? [];
-  return Array.isArray(h) ? h : [];
-}
-
-export default function ScreeningDetails() {
-  const { id } = useParams<{ id: string }>();
-
-  const [busy, setBusy] = useState<boolean>(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [data, setData] = useState<ScreeningDetailsResp | null>(null);
-  const [showTech, setShowTech] = useState<boolean>(false);
-
-  const request = data?.request ?? null;
-  const result = data?.result ?? null;
-  const matchesRaw: AnyObj[] = Array.isArray(data?.matches) ? data!.matches : [];
-
-  const requestPayload = useMemo<AnyObj | null>(() => ((request as any)?.request_payload ?? null), [request]);
-
-  const identity = useMemo(() => pickIdentity(data), [data]);
-  const displayName = useMemo(() => getDisplayNameFromIdentity(identity, requestPayload), [identity, requestPayload]);
-
-  const docs = useMemo(() => pickDocuments(data), [data]);
-  const mainOcr = useMemo(() => pickMainOcrMeta(data), [data]);
-  const matches = useMemo(() => normalizeMatches(matchesRaw), [matchesRaw]);
-
-  const createdAt = (request as any)?.created_at || (request as any)?.createdAt || null;
-  const completedAt = (request as any)?.completed_at || (request as any)?.completedAt || null;
-
-  // ✅ Décisions (read-only) : ne plus dépendre de data.case.*
-  const decisionLatest = useMemo(() => pickDecisionLatest(data), [data]);
-  const decisionHistory = useMemo(() => pickDecisionHistory(data), [data]);
-
-  const summary = useMemo(() => {
-    const r: any = result || {};
-    const risk = r?.risk_level ?? r?.riskLevel ?? null;
-    const confidence = r?.confidence ?? null;
-    const action = r?.recommended_action ?? r?.recommendedAction ?? null;
-    return { risk, confidence, action };
-  }, [result]);
-
-  const dossierLabel = displayName && displayName !== "-" ? displayName : (request as any)?.client_id || "-";
-
-  async function load() {
-    if (!id) return;
+  async function onLaunchSimple() {
+    setToast(null);
     setBusy(true);
-    setErr(null);
     try {
-      const d = (await getScreeningDetails(id)) as unknown;
-      setData(d as ScreeningDetailsResp);
-    } catch (e: unknown) {
-      const anyE = e as any;
-      setErr(anyE?.response?.data?.detail || anyE?.message || String(anyE));
-      setData(null);
+      // ✅ Payload simplifié: plus de DOB/country/nationality/aliases/includeAliases
+      const payload: SimpleScreeningIn = {
+        entity_type: entityType,
+        first_name: entityType === "INDIVIDUAL" ? firstName.trim() : undefined,
+        last_name: entityType === "INDIVIDUAL" ? lastName.trim() : undefined,
+        company_name: entityType === "COMPANY" ? companyName.trim() : undefined,
+        max_matches: maxMatches,
+      };
+
+      const res: any = await launchSimpleScreening(payload);
+
+      const name =
+        entityType === "INDIVIDUAL"
+          ? `${firstName.trim()} ${lastName.trim()}`.trim()
+          : companyName.trim();
+
+      pushFlow({
+        title: "Screening lancé",
+        detail: `request_id=${res.request_id} (mode=SIMPLE)`,
+      });
+
+      setPopup({
+        request_id: res.request_id,
+        status: res.status,
+        mode: "SIMPLE",
+        name,
+        recommended_action: res.recommended_action ?? res.recommendedAction ?? null,
+        risk_level: res.risk_level ?? res.riskLevel ?? null,
+        confidence: res.confidence ?? null,
+        matches_count: res.matches_count ?? res.matchesCount ?? null,
+      });
+
+      await refreshPopupDetails(res.request_id, "SIMPLE", name);
+
+      setToast({ tone: "ok", text: `✅ Screening lancé: ${res.request_id}` });
+    } catch (e: any) {
+      setToast({ tone: "danger", text: `❌ Erreur: ${e?.response?.data?.detail || e?.message || String(e)}` });
     } finally {
       setBusy(false);
     }
   }
 
+  function resetSimple() {
+    setEntityType("INDIVIDUAL");
+    setFirstName("");
+    setLastName("");
+    setCompanyName("");
+    setMaxMatches(20);
+    setToast(null);
+  }
+
+  // -----------------------------------
+  // OCR flow (upload + OCR + confirmation en popup)
+  // -----------------------------------
+  const [ocrFile, setOcrFile] = useState<File | null>(null);
+  const [ocrPreviewUrl, setOcrPreviewUrl] = useState<string | null>(null);
+
+  const [docType, setDocType] = useState("ID_CARD");
+  const [documentId, setDocumentId] = useState<string | null>(null);
+  const [ocrResp, setOcrResp] = useState<OcrExtractResp | null>(null);
+
+  // (on garde ces states pour cohérence, mais la confirmation se fait désormais dans le popup)
+  const [ocrLastName, setOcrLastName] = useState("");
+  const [ocrFirstName, setOcrFirstName] = useState("");
+  const [ocrDob, setOcrDob] = useState("");
+  const [ocrDocNo, setOcrDocNo] = useState("");
+
+  const [clientId, setClientId] = useState("");
+  
+
+  const overrideName = useMemo(() => {
+    const fn = ocrFirstName.trim();
+    const ln = ocrLastName.trim();
+    return [fn, ln].filter(Boolean).join(" ").trim();
+  }, [ocrFirstName, ocrLastName]);
+
   useEffect(() => {
-    load();
+    return () => {
+      if (ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, []);
 
-  // ----------------------------
-  // (Optionnel) Formulaire analyst - reste local tant que l’API save n’est pas branchée
-  // ----------------------------
-  const didInitRef = useRef<boolean>(false);
-  const baselineRef = useRef<FormState | null>(null);
-  const ocrRef = useRef<FormState | null>(null);
+  function onPickFile(f: File | null) {
+    setToast(null);
+    setOcrFile(f);
+    setDocumentId(null);
+    setOcrResp(null);
+    setPopup(null);
+    setStepModal(null);
 
-  const [form, setForm] = useState<FormState>({ lastName: "", firstName: "", dob: "", docNo: "" });
+    setOcrLastName("");
+    setOcrFirstName("");
+    setOcrDob("");
+    setOcrDocNo("");
 
-  const computedBaseline = useMemo<FormState>(() => {
-    const ln = safeStr(identity?.lastName);
-    const fn = safeStr(identity?.firstName);
-    const dob = safeStr(identity?.dob);
-    const docNo = safeStr(identity?.docNo);
-    return { lastName: ln, firstName: fn, dob, docNo };
-  }, [identity]);
+    if (ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
+    if (f) setOcrPreviewUrl(URL.createObjectURL(f));
+    else setOcrPreviewUrl(null);
 
-  const computedOcr = useMemo<FormState>(() => {
-    const best = docs.find((d) => (d as any)?.extracted_fields) || null;
-    const f = (best as any)?.extracted_fields || (requestPayload as any)?.extracted_fields || (requestPayload as any)?.document_fields || null;
+    setFlow([]);
+  }
 
-    const ln = safeStr((f as any)?.last_name ?? (f as any)?.lastName ?? identity?.lastName);
-    const fn = safeStr((f as any)?.first_name ?? (f as any)?.firstName ?? identity?.firstName);
-    const dob = safeStr((f as any)?.date_of_birth ?? (f as any)?.dob ?? identity?.dob);
-    const docNo = safeStr((f as any)?.document_number ?? (f as any)?.documentNumber ?? identity?.docNo);
+  async function onUploadStandalone() {
+    if (!ocrFile) {
+      setToast({ tone: "danger", text: "❌ Choisis une image recto d'abord." });
+      return;
+    }
+    setBusy(true);
+    setToast(null);
+    try {
+      const up: any = await uploadDocumentStandalone(docType, ocrFile);
+      setDocumentId(up.document_id);
 
-    return { lastName: ln, firstName: fn, dob, docNo };
-  }, [docs, requestPayload, identity]);
+      pushFlow({
+        title: "Upload document",
+        detail: `document_id=${up.document_id} ocr_status=${up.ocr_status ?? "-"}`,
+      });
 
-  useEffect(() => {
-    const base = computedBaseline;
-    const ocr = computedOcr;
+      // ✅ popup upload OK (comme avant)
+      setStepModal({
+        kind: "UPLOAD_DONE",
+        document_id: up.document_id,
+        ocr_status: up.ocr_status ?? null,
+      });
 
-    if (!didInitRef.current) {
-      didInitRef.current = true;
-      baselineRef.current = base;
-      ocrRef.current = ocr;
-      setForm(base);
+      setToast({ tone: "ok", text: `✅ Upload OK: document_id=${up.document_id}` });
+    } catch (e: any) {
+      setToast({ tone: "danger", text: `❌ Upload error: ${e?.response?.data?.detail || e?.message || String(e)}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onExtractOcr() {
+    if (!documentId) {
+      setToast({ tone: "danger", text: "❌ Upload d'abord (document_id manquant)." });
+      return;
+    }
+    setBusy(true);
+    setToast(null);
+    try {
+      const r: any = await extractOcr(documentId);
+      setOcrResp(r);
+
+      const fields = {
+        last_name: (r.extracted_fields?.last_name || "").trim(),
+        first_name: (r.extracted_fields?.first_name || "").trim(),
+        date_of_birth: (r.extracted_fields?.date_of_birth || "").trim(),
+        document_number: (r.extracted_fields?.document_number || "").trim(),
+      };
+
+      // sync states (optionnel mais pratique)
+      setOcrLastName(fields.last_name);
+      setOcrFirstName(fields.first_name);
+      setOcrDob(fields.date_of_birth);
+      setOcrDocNo(fields.document_number);
+
+      pushFlow({
+        title: "OCR terminé",
+        detail: `status=${r.ocr_status} conf=${r.ocr_confidence ?? "-"}`,
+      });
+
+      // ✅ popup OCR_DONE avec champs modifiables + actions
+      setStepModal({
+        kind: "OCR_DONE",
+        document_id: documentId,
+        ocr_status: r.ocr_status ?? null,
+        ocr_confidence: typeof r.ocr_confidence === "number" ? r.ocr_confidence : null,
+        fields,
+      });
+
+      setToast({ tone: "ok", text: `✅ Extraction OK: status=${r.ocr_status}` });
+    } catch (e: any) {
+      setToast({ tone: "danger", text: `❌ Erreur extraction: ${e?.response?.data?.detail || e?.message || String(e)}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startScreeningFromDoc(overrideNameStr: string) {
+    if (!documentId) return;
+    const name = (overrideNameStr || "").trim();
+    if (name.length < 3) {
+      setToast({ tone: "danger", text: "❌ Mets au moins Prénoms + Nom." });
       return;
     }
 
-    const cur = form;
-    const wasModified = baselineRef.current
-      ? cur.lastName !== baselineRef.current.lastName ||
-        cur.firstName !== baselineRef.current.firstName ||
-        cur.dob !== baselineRef.current.dob ||
-        cur.docNo !== baselineRef.current.docNo
-      : false;
+    const res: any = await screeningFromDocument({
+      document_id: documentId,
+      client_id: clientId.trim() || undefined,
+      
+      override_name: name,
+    });
 
-    baselineRef.current = base;
-    ocrRef.current = ocr;
+    pushFlow({
+      title: "Screening lancé",
+      detail: `request_id=${res.request_id} (mode=OCR)`,
+    });
 
-    if (!wasModified) setForm(base);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [computedBaseline.lastName, computedBaseline.firstName, computedBaseline.dob, computedBaseline.docNo]);
+    // close step modal, open final popup
+    setStepModal(null);
 
-  const isModified = useMemo(() => {
-    const base = baselineRef.current;
-    if (!base) return false;
-    return form.lastName !== base.lastName || form.firstName !== base.firstName || form.dob !== base.dob || form.docNo !== base.docNo;
-  }, [form]);
+    setPopup({
+      request_id: res.request_id,
+      status: res.status ?? null,
+      mode: "OCR",
+      name,
+      recommended_action: res.recommended_action ?? res.recommendedAction ?? null,
+      risk_level: res.risk_level ?? res.riskLevel ?? null,
+      confidence: res.confidence ?? null,
+      matches_count: res.matches_count ?? res.matchesCount ?? null,
+    });
 
-  function setField(k: keyof FormState, v: string) {
-    setForm((prev) => ({ ...prev, [k]: v }));
+    await refreshPopupDetails(res.request_id, "OCR", name);
+    setToast({ tone: "ok", text: `✅ Screening lancé: request_id=${res.request_id}` });
   }
 
-  function applyOcrToForm() {
-    const o = ocrRef.current || computedOcr;
-    setForm(o);
+  async function onStartScreeningFromDoc() {
+    setBusy(true);
+    setToast(null);
+    try {
+      await startScreeningFromDoc(overrideName);
+    } catch (e: any) {
+      setToast({ tone: "danger", text: `❌ Screening error: ${e?.response?.data?.detail || e?.message || String(e)}` });
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function resetForm() {
-    const base = baselineRef.current || computedBaseline;
-    setForm(base);
+  function resetOcr() {
+    setToast(null);
+    onPickFile(null);
+    setDocType("ID_CARD");
+    setClientId("local-demo");
+    
   }
 
-  const formErrors = useMemo(() => {
-    const errs: string[] = [];
-    if (form.dob && !isIsoDateLike(form.dob)) errs.push("La date de naissance doit être au format YYYY-MM-DD.");
-    return errs;
-  }, [form.dob]);
+  // -----------------------------------
+  // Final popup: refresh details + decision
+  // -----------------------------------
+  const [bypassComment, setBypassComment] = useState("");
+  const [bypassBusy, setBypassBusy] = useState(false);
 
-  async function save() {
-    alert("TODO: brancher un endpoint de save si tu veux persister ces champs (pas lié à la décision PASS/BLOCK).");
+  async function refreshPopupDetails(requestId: string, mode: "OCR" | "SIMPLE", name?: string) {
+    try {
+      const d: any = await getScreeningDetails(requestId);
+
+      const matchesRaw = Array.isArray(d?.matches) ? d.matches : [];
+
+      setPopup((prev) => ({
+        ...(prev || { request_id: requestId, mode, name }),
+        request_id: requestId,
+        mode,
+        name: name ?? prev?.name,
+        status: d?.request?.status ?? prev?.status ?? null,
+
+        recommended_action: d?.result?.recommended_action ?? prev?.recommended_action ?? null,
+        risk_level: d?.result?.risk_level ?? prev?.risk_level ?? null,
+        confidence: d?.result?.confidence ?? prev?.confidence ?? null,
+        matches_count: typeof matchesRaw.length === "number" ? matchesRaw.length : prev?.matches_count ?? null,
+
+        decision_latest: d?.decision_latest ?? null,
+        decision_history: Array.isArray(d?.decision_history) ? d.decision_history : [],
+      }));
+    } catch (e: any) {
+      setToast({ tone: "warn", text: `⚠️ Refresh détails impossible: ${e?.response?.data?.detail || e?.message || String(e)}` });
+    }
   }
+
+  async function doBypass(decision: "PASS" | "BLOCK") {
+    if (!popup) return;
+    const c = bypassComment.trim();
+    if (c.length < 4) {
+      setToast({ tone: "danger", text: "❌ Commentaire obligatoire (min 4 caractères)." });
+      return;
+    }
+
+    setBypassBusy(true);
+    setToast(null);
+    try {
+      await setScreeningDecision(popup.request_id, decision, c);
+
+      pushFlow({
+        title: "Décision enregistrée",
+        detail: `${decision} — ${c}`,
+      });
+
+      setToast({ tone: "ok", text: `✅ Décision enregistrée: ${decision}` });
+      setBypassComment("");
+
+      await refreshPopupDetails(popup.request_id, popup.mode, popup.name);
+    } catch (e: any) {
+      setToast({ tone: "danger", text: `❌ Erreur décision: ${e?.response?.data?.detail || e?.message || String(e)}` });
+    } finally {
+      setBypassBusy(false);
+    }
+  }
+
+  const latestDecision = popup?.decision_latest ?? null;
+
+  // Helpers for popup OCR edit
+  const ocrPopupName = useMemo(() => {
+    if (!stepModal || stepModal.kind !== "OCR_DONE") return "";
+    const fn = stepModal.fields.first_name.trim();
+    const ln = stepModal.fields.last_name.trim();
+    return [fn, ln].filter(Boolean).join(" ").trim();
+  }, [stepModal]);
+
+  const canStartFromPopup = useMemo(() => {
+    if (!documentId) return false;
+    if (!stepModal || stepModal.kind !== "OCR_DONE") return false;
+    return ocrPopupName.length >= 3;
+  }, [documentId, stepModal, ocrPopupName]);
 
   return (
     <div className="page">
@@ -601,627 +453,637 @@ export default function ScreeningDetails() {
         <div className="section-head" style={{ marginBottom: 14 }}>
           <div style={{ minWidth: 0 }}>
             <div className="small" style={{ fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Screening Console
+              Analyst Console
             </div>
-            <div className="page-title">Détails du screening</div>
-            <div className="page-subtitle">Vue lisible : résumé, données collectées, résultats, décisions et export PDF.</div>
+            <div className="page-title">Analyst</div>
+            <div className="page-subtitle"></div>
           </div>
 
           <div className="pill-row">
-            <Link className="btn secondary" to="/screenings">
-              ← Retour
+            <Link to="/screenings" className="btn secondary">
+              📋 Screenings
             </Link>
-            <button className="btn secondary" onClick={load} disabled={busy}>
-              {busy ? "Actualisation..." : "Refresh"}
-            </button>
           </div>
         </div>
 
-        {err ? <div className="toast">❌ {err}</div> : null}
-
-        {!data ? (
-          <div className="screen">
-            <div className="small">{busy ? "Chargement..." : "Pas de données."}</div>
+        {/* Toast */}
+        {toast ? (
+          <div className={`toast ${toast.tone || ""}`} style={{ marginBottom: 14 }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ minWidth: 0 }}>{toast.text}</div>
+              <Link to="/screenings" className="badge">
+                Voir la liste →
+              </Link>
+            </div>
           </div>
-        ) : (
-          <div className="grid-2">
-            {/* LEFT */}
-            <div className="screen">
-              {/* Top summary */}
-              <div className="card" style={{ marginTop: 0 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="h2" style={{ marginTop: 0, marginBottom: 6 }}>
-                      Résumé
-                    </div>
-                    <div className="small" style={{ opacity: 0.9 }}>
-                      Screening #{(request as any)?.id ?? id} — {humanProvider((request as any)?.provider)} — {fmtDate(createdAt)}
-                    </div>
-                  </div>
+        ) : null}
 
-                  <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button
-                      className="btn"
-                      onClick={() => downloadScreeningExportPdf(String((request as any)?.id ?? id))}
-                      disabled={!(request as any)?.id && !id}
-                      title="Télécharger un PDF (partageable)"
-                    >
-                      ⬇️ Export PDF
-                    </button>
-                    <button className="btn secondary" onClick={() => setShowTech((v) => !v)}>
-                      {showTech ? "Masquer détails techniques" : "Afficher détails techniques"}
-                    </button>
-                  </div>
+        <div className="grid-2">
+          {/* LEFT */}
+          <div className="screen">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div className="h2" style={{ margin: 0 }}>
+                  Lancer un screening
                 </div>
-
-                <div style={{ height: 12 }} />
-
-                <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                  <Badge className={statusBadgeClass((request as any)?.status)} title="État actuel du screening">
-                    Statut: {(request as any)?.status || "-"}
-                  </Badge>
-
-                  <Badge title="Nom du client screené">
-                    Dossier: <b>{dossierLabel}</b>
-                  </Badge>
-
-                  <Badge title="Action recommandée (interne)">
-                    Décision recommandée: <b>{humanAction(summary.action)}</b>
-                  </Badge>
-
-                  <Badge title="Niveau de risque détecté">
-                    Risque: <b>{humanRisk(summary.risk)}</b>
-                  </Badge>
-
-                  <Badge title="Indice de confiance du moteur">
-                    Confiance: <b>{toPct(summary.confidence) ?? "-"}</b>
-                  </Badge>
-
-                  <Badge title="Nombre de correspondances trouvées">
-                    Correspondances: <b>{matches.length}</b>
-                  </Badge>
-                </div>
-
-                {/* ✅ Décision analyst (read-only) */}
-                <div className="card" style={{ marginTop: 12 }}>
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div className="h2" style={{ marginTop: 0 }}>
-                        Décision analyst
-                      </div>
-                      <div className="small" style={{ opacity: 0.9 }}>
-                        Décision prise dans le popup (audit trail) — affichage en lecture seule.
-                      </div>
-                    </div>
-
-                    <span className="badge">
-                      Dernière: <b>{decisionLatest ? humanDecision(decisionLatest.decision) : "—"}</b>
-                    </span>
-                  </div>
-
-                  <div style={{ height: 10 }} />
-
-                  {!decisionLatest ? (
-                    <div className="small" style={{ opacity: 0.85 }}>
-                      Aucune décision enregistrée pour l’instant.
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 8 }}>
-                      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                        <span className={decisionBadgeClass(decisionLatest.decision)}>
-                          Décision: <b>{humanDecision(decisionLatest.decision)}</b>
-                        </span>
-                        {decisionLatest.decided_by_email ? (
-                          <span className="badge">
-                            par: <b>{decisionLatest.decided_by_email}</b>
-                          </span>
-                        ) : null}
-                        {decisionLatest.decided_at ? (
-                          <span className="badge">
-                            le: <b>{fmtDate(decisionLatest.decided_at)}</b>
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {decisionLatest.comment ? (
-                        <div style={{ opacity: 0.95, lineHeight: 1.6 }}>
-                          <b>Raison :</b> {String(decisionLatest.comment)}
-                        </div>
-                      ) : (
-                        <div className="small" style={{ opacity: 0.85 }}>
-                          <b>Raison :</b> —
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {decisionHistory.length > 0 ? (
-                  <details style={{ marginTop: 12 }}>
-                    <summary className="badge" style={{ cursor: "pointer" }}>
-                      Voir historique ({decisionHistory.length})
-                    </summary>
-                    <div style={{ height: 10 }} />
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {decisionHistory.slice(0, 50).map((d, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            borderRadius: 12,
-                            padding: 10,
-                            background: "rgba(255,255,255,0.03)",
-                          }}
-                        >
-                          <div className="row" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                            <span className={decisionBadgeClass(d?.decision)}>
-                              <b>{humanDecision(d?.decision)}</b>
-                            </span>
-                            <span className="small" style={{ opacity: 0.85 }}>
-                              {fmtDate(d?.decided_at)} · {d?.decided_by_email || "—"}
-                            </span>
-                          </div>
-                          <div className="small" style={{ opacity: 0.92, marginTop: 6, lineHeight: 1.6 }}>
-                            {d?.comment || "—"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                ) : null}
+                <div className="small"></div>
               </div>
 
-              {/* ✅ Profil client / Données collectées */}
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "end", gap: 10 }}>
-                  <div>
-                    <div className="h2" style={{ marginTop: 0 }}>
-                      Profil client
+              <div className="tabbar">
+                <div className={`tab ${tab === "simple" ? "active" : ""}`} onClick={() => setTab("simple")}>
+                  Mode Simple
+                </div>
+                <div className={`tab ${tab === "ocr" ? "active" : ""}`} onClick={() => setTab("ocr")}>
+                  Mode Extraction
+                </div>
+              </div>
+            </div>
+
+            {tab === "simple" ? (
+              <>
+                {/* SIMPLE (simplifié) */}
+                <div className="card" style={{ marginTop: 8 }}>
+                  <div className="h2" style={{ marginTop: 0 }}>
+                    Mode Simple
+                  </div>
+
+                  <div className="form-grid">
+                    <div className="field">
+                      <label className="small">Type</label>
+                      <select className="select" value={entityType} onChange={(e) => setEntityType(e.target.value as any)}>
+                        <option value="INDIVIDUAL">INDIVIDUAL</option>
+                        <option value="COMPANY">COMPANY</option>
+                      </select>
                     </div>
-                    <div className="small" style={{ opacity: 0.9 }}>
-                      Identité, données utilisées, et documents soumis (incl. photo ID).
+
+                    <div className="field">
+                      <label className="small">Max matches</label>
+                      <input
+                        className="input"
+                        type="number"
+                        value={maxMatches}
+                        onChange={(e) => setMaxMatches(Number(e.target.value))}
+                        min={1}
+                        max={200}
+                      />
+                    </div>
+
+                    {entityType === "INDIVIDUAL" ? (
+                      <>
+                        <div className="field">
+                          <label className="small">First name</label>
+                          <input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                        </div>
+                        <div className="field">
+                          <label className="small">Last name</label>
+                          <input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="field span-2">
+                        <label className="small">Company name</label>
+                        <input className="input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+                      </div>
+                    )}
+
+                    <div className="field span-2">
+                      <label className="small">Actions</label>
+                      <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <button className="btn" disabled={busy || !canLaunchSimple} onClick={onLaunchSimple}>
+                          {busy ? "En cours..." : "Lancer"}
+                        </button>
+                        <button className="btn secondary" disabled={busy} onClick={resetSimple}>
+                          Reset
+                        </button>
+                      </div>
+
+                      {!canLaunchSimple ? (
+                        <div className="small" style={{ marginTop: 8 }}>
+                          {entityType === "INDIVIDUAL" ? "Prenom + Nom sont obligatoires  requis." : "Nom de l'entreprise est obligatoire"}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* OCR: 1) Upload */}
+                <div className="card" style={{ marginTop: 8 }}>
+                  <div className="h2" style={{ marginTop: 0 }}>
+                    1) Upload recto de la Piece
+                  </div>
+
+                  <div className="form-grid">
+                    <div className="field">
+                      <label className="small">Doc type</label>
+                      <select className="select" value={docType} onChange={(e) => setDocType(e.target.value)}>
+                        <option value="ID_CARD">ID_CARD</option>
+                        <option value="PASSPORT">PASSPORT</option>
+                      </select>
+                    </div>
+
+                    <div className="field span-2">
+                      <label className="small">Image recto</label>
+                      <input
+                        className="input"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) => onPickFile(e.target.files?.[0] || null)}
+                      />
+                      <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                        
+                      </div>
+                    </div>
+
+                    <div className="field">
+                      <label className="small">Action</label>
+                      <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                        <button className="btn" disabled={busy || !ocrFile} onClick={onUploadStandalone}>
+                          {busy ? "..." : "Uploader"}
+                        </button>
+                        <button className="btn secondary" disabled={busy} onClick={resetOcr}>
+                          Reset
+                        </button>
+                      </div>
+                      <div className="small" style={{ marginTop: 8 }}>
+                        
+                      </div>
                     </div>
                   </div>
 
-                  <div className="pill-row">
-                    <span className="badge">
-                      ocr_status: <b style={{ marginLeft: 6 }}>{String(mainOcr.status || "—")}</b>
-                    </span>
-                    <span className="badge">
-                      conf globale: <b style={{ marginLeft: 6 }}>{pct(mainOcr.confidence)}</b>
-                    </span>
-                    <span className={confidenceLabel(mainOcr.confidence).tone}>{confidenceLabel(mainOcr.confidence).label}</span>
+                  {ocrPreviewUrl ? (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="small" style={{ marginBottom: 8 }}>
+                        Preview
+                      </div>
+                      <img
+                        src={ocrPreviewUrl}
+                        alt="recto"
+                        style={{
+                          width: "100%",
+                          maxHeight: 320,
+                          objectFit: "contain",
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,.08)",
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* OCR: 2) Extraction (confirmation dans popup) */}
+                <div className="card" style={{ marginTop: 12 }}>
+                  <div className="h2" style={{ marginTop: 0 }}>
+                    2) Extraction + Confirmation (popup)
+                  </div>
+
+                  <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                    <button className="btn secondary" disabled={busy || !documentId} onClick={onExtractOcr}>
+                      {busy ? "..." : "Lancer Extraction"}
+                    </button>
+
+                    {ocrResp ? (
+                      <>
+                        <span className="badge">ocr_status: {ocrResp.ocr_status}</span>
+                        <span className="badge">conf: {ocrResp.ocr_confidence ?? "-"}</span>
+                      </>
+                    ) : (
+                      <span className="small"></span>
+                    )}
+                  </div>
+
+                  <div className="form-grid">
+                    <div className="field">
+                      <label className="small">client_id</label>
+                      <input className="input" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+                    </div>
+                   
+
+                    <div className="field span-2">
+                      <div className="small" style={{ opacity: 0.85 }}>
+                       
+                      </div>
+                    </div>
+                  </div>
+
+                  {ocrResp ? (
+                    <details style={{ marginTop: 12 }}>
+                      <summary className="badge" style={{ cursor: "pointer" }}>
+                        Voir Extraction response (debug)
+                      </summary>
+                      <div style={{ height: 10 }} />
+                      <textarea readOnly value={JSON.stringify(ocrResp, null, 2)} />
+                    </details>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* RIGHT */}
+          <div className="screen">
+            <div className="h2" style={{ marginTop: 0 }}>
+              Raccourcis
+            </div>
+
+            <div className="card" style={{ marginTop: 10 }}>
+              <div className="small" style={{ marginBottom: 10 }}>
+                
+              </div>
+
+              <div className="row" style={{ flexWrap: "wrap", gap: 10 }}>
+                <Link className="btn secondary" to="/screenings">
+                  📋 Voir tous les screenings
+                </Link>
+              </div>
+            </div>
+
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="small" style={{ marginBottom: 8 }}>
+                Status
+              </div>
+              <div className="small">
+                Busy: <b>{busy ? "yes" : "no"}</b>
+              </div>
+              <div className="small">
+                Mode: <b>{tab}</b>
+              </div>
+              <div className="small">
+                document_id: <b>{documentId || "-"}</b>
+              </div>
+              <div className="small">
+                pop-up: <b>{popup?.request_id || "-"}</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* STEP MODALS */}
+        {stepModal ? (
+          <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setStepModal(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <div>
+                  <div className="modal-kicker">Notification</div>
+                  <div className="modal-action">
+                    {stepModal.kind === "UPLOAD_DONE" ? "✅ Upload terminé" : "✅ Extraction OCR terminée"}
+                  </div>
+                  <div className="modal-sub">
+                    <span className="badge">document_id: {stepModal.document_id}</span>
+                    {"ocr_status" in stepModal && stepModal.ocr_status ? <span className="badge">ocr_status: {stepModal.ocr_status}</span> : null}
+                    {"ocr_confidence" in stepModal && typeof (stepModal as any).ocr_confidence === "number" ? (
+                      <span className="badge">conf: {fmtConfidence((stepModal as any).ocr_confidence)}</span>
+                    ) : null}
                   </div>
                 </div>
 
-                <div style={{ height: 12 }} />
+                <button className="icon-btn" onClick={() => setStepModal(null)} aria-label="Fermer">
+                  ✕
+                </button>
+              </div>
 
-                <div className="profile-grid">
-                  <div className="profile-field">
-                    <div className="profile-label">Nom</div>
-                    <div className="profile-value">{identity.lastName || "—"}</div>
-                  </div>
-                  <div className="profile-field">
-                    <div className="profile-label">Prénoms</div>
-                    <div className="profile-value">{identity.firstName || "—"}</div>
-                  </div>
-                  <div className="profile-field">
-                    <div className="profile-label">Date de naissance</div>
-                    <div className="profile-value">{identity.dob || "—"}</div>
-                  </div>
-                  <div className="profile-field">
-                    <div className="profile-label">N° document</div>
-                    <div className="profile-value">{identity.docNo || "—"}</div>
-                  </div>
-                  <div className="profile-field">
-                    <div className="profile-label">Nationalité</div>
-                    <div className="profile-value">{identity.nationality || "—"}</div>
-                  </div>
-                  <div className="profile-field">
-                    <div className="profile-label">Pays</div>
-                    <div className="profile-value">{identity.country || "—"}</div>
+              <div className="modal-body">
+                <div className="card" style={{ marginTop: 8 }}>
+                  {stepModal.kind === "UPLOAD_DONE" ? (
+                    <>
+                      <div style={{ fontWeight: 900 }}>Prochaine étape</div>
+                      <div className="small" style={{ marginTop: 6 }}>
+                        
+                      </div>
+                      <div className="row" style={{ gap: 10, marginTop: 12 }}>
+                        <button
+                          className="btn"
+                          onClick={() => {
+                            setStepModal(null);
+                            onExtractOcr();
+                          }}
+                          disabled={busy}
+                        >
+                          ▶ Lancer OCR
+                        </button>
+                        <button className="btn secondary" onClick={() => setStepModal(null)}>
+                          Fermer
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* ✅ OCR popup = confirmation + édition + lancement screening */}
+                      <div style={{ fontWeight: 900 }}>Données extraites (modifiable)</div>
+                      <div className="small" style={{ marginTop: 6, opacity: 0.9 }}>
+                        Modifie si besoin puis lance le screening.
+                      </div>
+
+                      <div className="form-grid" style={{ marginTop: 12 }}>
+                        <div className="field">
+                          <label className="small">Nom</label>
+                          <input
+                            className="input"
+                            value={stepModal.fields.last_name}
+                            onChange={(e) =>
+                              setStepModal((prev) =>
+                                prev && prev.kind === "OCR_DONE"
+                                  ? { ...prev, fields: { ...prev.fields, last_name: e.target.value } }
+                                  : prev
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label className="small">Prénoms</label>
+                          <input
+                            className="input"
+                            value={stepModal.fields.first_name}
+                            onChange={(e) =>
+                              setStepModal((prev) =>
+                                prev && prev.kind === "OCR_DONE"
+                                  ? { ...prev, fields: { ...prev.fields, first_name: e.target.value } }
+                                  : prev
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label className="small">DOB</label>
+                          <input
+                            className="input"
+                            placeholder="YYYY-MM-DD"
+                            value={stepModal.fields.date_of_birth}
+                            onChange={(e) =>
+                              setStepModal((prev) =>
+                                prev && prev.kind === "OCR_DONE"
+                                  ? { ...prev, fields: { ...prev.fields, date_of_birth: e.target.value } }
+                                  : prev
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label className="small">Doc number</label>
+                          <input
+                            className="input"
+                            value={stepModal.fields.document_number}
+                            onChange={(e) =>
+                              setStepModal((prev) =>
+                                prev && prev.kind === "OCR_DONE"
+                                  ? { ...prev, fields: { ...prev.fields, document_number: e.target.value } }
+                                  : prev
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="field span-2">
+                          <label className="small">Nom complet (screening)</label>
+                          <input className="input" value={ocrPopupName} readOnly />
+                          <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                            On lance le screening sur: <b>{ocrPopupName || "(vide)"}</b>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="row" style={{ gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+                        <button
+                          className="btn"
+                          disabled={busy || !canStartFromPopup}
+                          onClick={async () => {
+                            // sync states (optionnel)
+                            setOcrLastName(stepModal.fields.last_name);
+                            setOcrFirstName(stepModal.fields.first_name);
+                            setOcrDob(stepModal.fields.date_of_birth);
+                            setOcrDocNo(stepModal.fields.document_number);
+
+                            setBusy(true);
+                            setToast(null);
+                            try {
+                              await startScreeningFromDoc(ocrPopupName);
+                            } catch (e: any) {
+                              setToast({
+                                tone: "danger",
+                                text: `❌ Screening error: ${e?.response?.data?.detail || e?.message || String(e)}`,
+                              });
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        >
+                          ▶ Lancer Screening
+                        </button>
+
+                        {!canStartFromPopup ? <span className="small">Requis: upload + nom/prénoms.</span> : null}
+
+                        <button className="btn secondary" onClick={() => setStepModal(null)}>
+                          Fermer
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button className="btn secondary" onClick={() => setStepModal(null)}>
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* FINAL POPUP */}
+        {popup ? (
+          <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setPopup(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <div style={{ minWidth: 0 }}>
+                  <div className="modal-kicker">Résultat du screening</div>
+                  <div className="modal-action">{actionLabel(popup.recommended_action)}</div>
+
+                  <div className="modal-sub" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                    {popup.name ? <span className="badge">👤 {popup.name}</span> : null}
+                    <span className="badge">mode: {popup.mode}</span>
+                    {popup.status ? <span className="badge">status: {popup.status}</span> : null}
+                    <span className="badge">
+                      Risque: <b>{humanRisk(popup.risk_level)}</b>
+                    </span>
+                    <span className="badge">
+                      Confiance: <b>{fmtConfidence(popup.confidence)}</b>
+                    </span>
+                    {typeof popup.matches_count === "number" ? (
+                      <span className="badge">
+                        Matchs: <b>{popup.matches_count}</b>
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
-                <div style={{ height: 14 }} />
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>Documents soumis</div>
+                <button className="icon-btn" onClick={() => setPopup(null)} aria-label="Fermer">
+                  ✕
+                </button>
+              </div>
 
-                {docs.length > 0 ? (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {docs.map((d, idx) => {
-                      const preview = safeStr((d as any).preview_url);
-                      const download = safeStr((d as any).download_url);
+              <div className="modal-body">
+                <div className="info-grid">
+                  <div className="info-card">
+                    <div className="info-key">request_id</div>
+                    <div className="info-val mono">{popup.request_id}</div>
+                  </div>
 
-                      const mime = safeStr((d as any).mime);
-                      const isImage = mime.startsWith("image/");
-                      const isPdf = mime === "application/pdf" || safeStr((d as any).original_filename).toLowerCase().endsWith(".pdf");
+                  <div className="info-card">
+                    <div className="info-key">Actions rapides</div>
+                    <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+                      <Link className="btn secondary" to={`/screenings/${popup.request_id}`}>
+                        Ouvrir détails
+                      </Link>
+                      <button className="btn secondary" onClick={() => refreshPopupDetails(popup.request_id, popup.mode, popup.name)}>
+                        Refresh détails
+                      </button>
+                      <button className="btn" onClick={() => downloadScreeningExportPdf(popup.request_id)}>
+                        ⬇️ Export PDF
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
-                      const title = safeStr((d as any).original_filename || (d as any).name || `Document ${idx + 1}`);
+                {/* Flow history */}
+                <div className="card" style={{ marginTop: 12 }}>
+                  <div style={{ fontWeight: 950 }}>Historique des actions (Flow)</div>
+                  <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                    Upload → OCR → Screening → Décision (audit UI).
+                  </div>
 
-                      return (
+                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                    {flow.length === 0 ? (
+                      <div className="small">Aucune action enregistrée dans cette session.</div>
+                    ) : (
+                      flow.map((e, idx) => (
                         <div
                           key={idx}
                           style={{
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            borderRadius: 14,
-                            padding: 12,
-                            background: "rgba(255,255,255,0.03)",
+                            border: "1px solid rgba(255,255,255,.10)",
+                            borderRadius: 16,
+                            padding: 10,
+                            background: "rgba(0,0,0,.18)",
                           }}
                         >
-                          <div className="row" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontWeight: 800 }}>{title}</div>
-                              <div className="small" style={{ opacity: 0.85, marginTop: 4 }}>
-                                {(d as any).doc_type ? (
-                                  <>
-                                    Type: <b>{String((d as any).doc_type)}</b> ·{" "}
-                                  </>
-                                ) : null}
-                                {mime ? (
-                                  <>
-                                    MIME: <b>{mime}</b> ·{" "}
-                                  </>
-                                ) : null}
-                                {(d as any).ocr_status ? (
-                                  <>
-                                    OCR: <b>{String((d as any).ocr_status)}</b> ·{" "}
-                                  </>
-                                ) : null}
-                                {typeof (d as any).ocr_confidence === "number" ? (
-                                  <>
-                                    Conf: <b>{Math.round(((d as any).ocr_confidence as number) * 100)}%</b>
-                                  </>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                              {download ? (
-                                <a className="btn secondary" href={download} target="_blank" rel="noreferrer">
-                                  ⬇️ Télécharger
-                                </a>
-                              ) : null}
-                              {preview && !isImage ? (
-                                <a className="btn secondary" href={preview} target="_blank" rel="noreferrer">
-                                  {isPdf ? "📄 Ouvrir PDF" : "👁️ Ouvrir"}
-                                </a>
-                              ) : null}
-                            </div>
+                          <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
+                            <span className="badge">{fmtDate(e.at)}</span>
+                            <div style={{ fontWeight: 900 }}>{e.title}</div>
                           </div>
-
-                          {preview && isImage ? (
-                            <>
-                              <div style={{ height: 10 }} />
-                              <img
-                                src={preview}
-                                alt={title}
-                                style={{
-                                  width: "100%",
-                                  maxHeight: 320,
-                                  objectFit: "contain",
-                                  borderRadius: 12,
-                                  border: "1px solid rgba(255,255,255,0.08)",
-                                  background: "rgba(0,0,0,0.2)",
-                                }}
-                              />
-                            </>
+                          {e.detail ? (
+                            <div className="small" style={{ marginTop: 6, opacity: 0.9 }}>
+                              {e.detail}
+                            </div>
                           ) : null}
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="small" style={{ opacity: 0.85 }}>
-                    Aucun document disponible pour ce screening.
-                  </div>
-                )}
-              </div>
-
-              {/* (Optionnel) Formulaire analyst - pas la décision PASS/BLOCK */}
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "end", gap: 10 }}>
-                  <div>
-                    <div className="h2" style={{ marginTop: 0 }}>
-                      Formulaire analyst
-                    </div>
-                    <div className="small" style={{ opacity: 0.9 }}>
-                      Ajuste les champs si besoin (baseline payload &gt; OCR). (Le save API reste à brancher.)
-                    </div>
-                  </div>
-
-                  <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button className="btn secondary" onClick={applyOcrToForm} title="Revenir aux valeurs OCR">
-                      ↺ Appliquer OCR
-                    </button>
-                    <button className="btn secondary" onClick={resetForm} title="Annuler les modifications">
-                      🧹 Réinitialiser
-                    </button>
-                    <button className="btn" onClick={save} disabled={!isModified || formErrors.length > 0}>
-                      ✅ Valider
-                    </button>
+                      ))
+                    )}
                   </div>
                 </div>
 
-                <div style={{ height: 12 }} />
-
-                {formErrors.length > 0 ? (
-                  <div className="toast" style={{ margin: 0 }}>
-                    ❌ {formErrors.join(" ")}
-                  </div>
-                ) : null}
-
-                {!isModified ? (
-                  <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
-                    Aucune modification détectée — le bouton <b>Valider</b> reste désactivé.
-                  </div>
-                ) : null}
-
-                <div style={{ height: 10 }} />
-
-                <div style={{ display: "grid", gap: 14 }}>
-                  <InputField label="Nom" value={form.lastName} onChange={(v) => setField("lastName", v)} placeholder="Ex: TRAORÉ" />
-                  <InputField label="Prénoms" value={form.firstName} onChange={(v) => setField("firstName", v)} placeholder="Ex: Awa Mariam" />
-                  <InputField
-                    label="Date de naissance"
-                    value={form.dob}
-                    onChange={(v) => setField("dob", v)}
-                    placeholder="YYYY-MM-DD"
-                    hint="Format recommandé: YYYY-MM-DD"
-                  />
-                  <InputField label="N° Document" value={form.docNo} onChange={(v) => setField("docNo", v)} placeholder="Ex: AB1234567" />
-                </div>
-              </div>
-
-              {/* ✅ Matches */}
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "end", gap: 10 }}>
-                  <div>
-                    <div className="h2" style={{ marginTop: 0 }}>
-                      Correspondances trouvées
-                    </div>
-                    <div className="small" style={{ opacity: 0.9 }}>
-                      Lis d’abord “Motifs / raisons”, puis “Source officielle”, puis “Pourquoi ce match”.
-                    </div>
-                  </div>
-                  <Badge className={matches.length === 0 ? "badge badge-ok" : "badge badge-warn"}>
-                    {matches.length === 0 ? "Aucune correspondance" : `${matches.length} résultat(s)`}
-                  </Badge>
-                </div>
-
-                <div style={{ height: 12 }} />
-
-                {matches.length === 0 ? (
-                  <div className="small" style={{ opacity: 0.9 }}>
-                    Rien à signaler pour l’instant.
-                  </div>
-                ) : (
-                  <div className="match-list">
-                    {matches.map((m, idx) => {
-                      const scorePct = toPct(m.score);
-                      const scoreN = typeof m.score === "number" ? m.score : null;
-
-                      const tone = scoreN != null && scoreN >= 90 ? "badge badge-bad" : scoreN != null && scoreN >= 75 ? "badge badge-warn" : "badge";
-
-                      const sb: any = m.sourceBlock;
-
-                      return (
-                        <div className="match-card" key={idx}>
-                          <div className="match-top">
-                            <div style={{ minWidth: 0 }}>
-                              <div className="match-name">{m.name}</div>
-                              <div className="match-meta">
-                                {m.band ? (
-                                  <>
-                                    Catégorie : <b>{m.band}</b>
-                                  </>
-                                ) : null}
-                                {sb?.label ? (
-                                  <>
-                                    {" "}
-                                    · Source : <b>{sb.label}</b>
-                                  </>
-                                ) : null}
-                                {sb?.ref ? (
-                                  <>
-                                    {" "}
-                                    · Réf : <b>{sb.ref}</b>
-                                  </>
-                                ) : null}
-                                {sb?.program ? (
-                                  <>
-                                    {" "}
-                                    · Programme : <b>{sb.program}</b>
-                                  </>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <span className={tone}>
-                              Score : <b>{scorePct ?? "—"}</b>
-                            </span>
-                          </div>
-
-                          {/* Motifs sanction / décision */}
-                          <div className="match-section">
-                            <div className="match-section-title">Motifs / raisons (sanction / décision)</div>
-                            {renderBulletsOrFallback(m.sanctionBullets, sb?.summary || "Aucun motif détaillé dans la source (summary/raw_payload).")}
-                            {renderRawDetails(m.sanctionRaw, "Voir détails bruts (source / sanction)")}
-                          </div>
-
-                          {/* Source officielle + liens */}
-                          {sb ? (
-                            <div className="match-section">
-                              <div className="match-section-title">Source officielle</div>
-
-                              <div className="match-par" style={{ display: "grid", gap: 6 }}>
-                                {sb.record_type ? (
-                                  <div>
-                                    <b>Type :</b> {sb.record_type}
-                                  </div>
-                                ) : null}
-                                {sb.listed_on ? (
-                                  <div>
-                                    <b>Inscrit le :</b> {sb.listed_on}
-                                  </div>
-                                ) : null}
-                                {sb.unlisted_on ? (
-                                  <div>
-                                    <b>Retiré le :</b> {sb.unlisted_on}
-                                  </div>
-                                ) : null}
-                                {sb.summary ? (
-                                  <div>
-                                    <b>Résumé :</b> {sb.summary}
-                                  </div>
-                                ) : null}
-                              </div>
-
-                              {Array.isArray(sb.links) && sb.links.length > 0 ? (
-                                <div className="match-par" style={{ marginTop: 8 }}>
-                                  <b>Liens (preuves) :</b>
-                                  <ul className="match-ul">
-                                    {sb.links
-                                      .map(asText)
-                                      .filter(looksLikeUrl)
-                                      .slice(0, 8)
-                                      .map((u: string, i: number) => (
-                                        <li key={i}>
-                                          <a href={u} target="_blank" rel="noreferrer">
-                                            {u}
-                                          </a>
-                                        </li>
-                                      ))}
-                                  </ul>
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-
-                          {/* Pourquoi le match (technique) */}
-                          <details className="match-details">
-                            <summary className="badge" style={{ cursor: "pointer" }}>
-                              Pourquoi ce match (technique)
-                            </summary>
-                            <div style={{ height: 10 }} />
-                            {renderBulletsOrFallback(m.matchBullets, m.reasonsHuman || "Correspondance détectée par le moteur (détails techniques disponibles).")}
-                            {renderRawDetails(m.matchRaw ?? (m.raw as any)?.reasons ?? m.raw, "Voir raisons brutes (matching)")}
-                          </details>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Timeline */}
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="h2" style={{ marginTop: 0 }}>
-                  Chronologie
-                </div>
-
-                <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                  <Badge title="Création du screening">
-                    Créé: <b>{fmtDate(createdAt)}</b>
-                  </Badge>
-                  <Badge title="Fin du screening (si terminé)">
-                    Terminé: <b>{fmtDate(completedAt)}</b>
-                  </Badge>
-                </div>
-              </div>
-            </div>
-
-            {/* RIGHT */}
-            <div className="screen">
-              <div className="h2" style={{ marginTop: 0 }}>
-                Aide & Explications
-              </div>
-
-              <div className="card" style={{ marginTop: 8 }}>
-                <div className="small" style={{ lineHeight: 1.7, opacity: 0.95 }}>
-                  <b>Comment lire cette page ?</b>
-                  <ul style={{ marginTop: 8 }}>
-                    <li>
-                      <b>Motifs sanction</b> : la partie la plus importante (source officielle).
-                    </li>
-                    <li>
-                      <b>Source officielle</b> : type, programme, dates, liens.
-                    </li>
-                    <li>
-                      <b>Pourquoi ce match</b> : explications techniques.
-                    </li>
-                    <li>
-                      <b>Décision analyst</b> : affichée en lecture seule (prise dans le popup).
-                    </li>
-                  </ul>
-                </div>
-
-                <div style={{ height: 10 }} />
-
-                <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-                  <Link className="btn secondary" to="/screenings">
-                    📋 Retour à la liste
-                  </Link>
-                  <button
-                    className="btn secondary"
-                    onClick={() => downloadScreeningExportPdf(String((request as any)?.id ?? id))}
-                    disabled={!(request as any)?.id && !id}
-                  >
-                    ⬇️ Export PDF
-                  </button>
-                </div>
-              </div>
-
-              {showTech ? (
+                {/* ✅ On enlève les tableaux résultats (tout se fait en popup / détails) */}
                 <div className="card" style={{ marginTop: 12 }}>
-                  <div className="h2" style={{ marginTop: 0 }}>
-                    Détails techniques (optionnel)
+                  <div style={{ fontWeight: 950 }}>Résumé</div>
+                  <div className="small" style={{ opacity: 0.85, marginTop: 6, lineHeight: 1.6 }}>
+                    Pour analyser les matchs (sanctions/PEP/media) : clique <b>“Ouvrir détails”</b>.
+                    <br />
+                    Export disponible via <b>“Export PDF”</b>.
                   </div>
-                  <div className="small" style={{ opacity: 0.9, marginBottom: 8 }}>
-                    À utiliser uniquement si tu fais du debug.
-                  </div>
-
-                  <details>
-                    <summary className="badge" style={{ cursor: "pointer" }}>
-                      Voir l’objet request (raw)
-                    </summary>
-                    <div style={{ height: 10 }} />
-                    <textarea readOnly value={JSON.stringify(request ?? null, null, 2)} />
-                  </details>
-
-                  <div style={{ height: 10 }} />
-
-                  <details>
-                    <summary className="badge" style={{ cursor: "pointer" }}>
-                      Voir l’objet result (raw)
-                    </summary>
-                    <div style={{ height: 10 }} />
-                    <textarea readOnly value={JSON.stringify(result ?? null, null, 2)} />
-                  </details>
-
-                  <div style={{ height: 10 }} />
-
-                  <details>
-                    <summary className="badge" style={{ cursor: "pointer" }}>
-                      Voir matches (raw)
-                    </summary>
-                    <div style={{ height: 10 }} />
-                    <textarea readOnly value={JSON.stringify(matchesRaw ?? [], null, 2)} />
-                  </details>
-
-                  <div style={{ height: 10 }} />
-
-                  <details>
-                    <summary className="badge" style={{ cursor: "pointer" }}>
-                      Voir data (raw)
-                    </summary>
-                    <div style={{ height: 10 }} />
-                    <textarea readOnly value={JSON.stringify(data ?? null, null, 2)} />
-                  </details>
                 </div>
-              ) : null}
+
+                {/* Decision */}
+                <div className="card" style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontWeight: 950 }}>Décision (Bypass)</div>
+                      <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                        Choisis PASS ou BLOCK. Commentaire obligatoire (min 4 caractères).
+                      </div>
+                    </div>
+
+                    <span className="badge">
+                      Dernière: <b>{latestDecision ? decisionHuman(latestDecision.decision) : "—"}</b>
+                    </span>
+                  </div>
+
+                  {latestDecision ? (
+                    <div className="small" style={{ marginTop: 10, opacity: 0.9, lineHeight: 1.6 }}>
+                      <b>{decisionHuman(latestDecision.decision)}</b> · {latestDecision.decided_by_email || "—"} ·{" "}
+                      {latestDecision.decided_at ? fmtDate(latestDecision.decided_at) : "—"}
+                      {latestDecision.comment ? (
+                        <>
+                          <br />
+                          <b>Raison :</b> {String(latestDecision.comment)}
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <textarea
+                    value={bypassComment}
+                    onChange={(e) => setBypassComment(e.target.value)}
+                    placeholder="Pourquoi PASS/BLOCK ? (obligatoire)"
+                    style={{ marginTop: 12 }}
+                  />
+
+                  <div className="row" style={{ gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                    <button className="btn" disabled={bypassBusy} onClick={() => doBypass("PASS")}>
+                      ✅ PASS
+                    </button>
+                    <button className="btn danger" disabled={bypassBusy} onClick={() => doBypass("BLOCK")}>
+                      ⛔ BLOCK
+                    </button>
+                  </div>
+
+                  {Array.isArray(popup.decision_history) && popup.decision_history.length > 0 ? (
+                    <details style={{ marginTop: 12 }}>
+                      <summary className="badge" style={{ cursor: "pointer" }}>
+                        Voir historique ({popup.decision_history.length})
+                      </summary>
+                      <div style={{ height: 10 }} />
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {popup.decision_history.slice(0, 50).map((d: any, i: number) => (
+                          <div
+                            key={i}
+                            style={{
+                              border: "1px solid rgba(255,255,255,.10)",
+                              borderRadius: 16,
+                              padding: 10,
+                              background: "rgba(255,255,255,.03)",
+                            }}
+                          >
+                            <div className="row" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                              <span className="badge">
+                                <b>{decisionHuman(d?.decision)}</b>
+                              </span>
+                              <span className="small" style={{ opacity: 0.85 }}>
+                                {d?.decided_at ? fmtDate(d.decided_at) : "—"} · {d?.decided_by_email || "—"}
+                              </span>
+                            </div>
+                            <div className="small" style={{ opacity: 0.92, marginTop: 6, lineHeight: 1.6 }}>
+                              {d?.comment || "—"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button className="btn secondary" onClick={() => setPopup(null)} style={{ width: "auto" }}>
+                  Fermer
+                </button>
+              </div>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
