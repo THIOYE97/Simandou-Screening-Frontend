@@ -482,7 +482,7 @@ export default function ScreeningDetails() {
               Screening Console
             </div>
             <div className="page-title">Détails du screening</div>
-            <div className="page-subtitle">Vue lisible : résumé, données collectées, résultats, décisions et export PDF.</div>
+            <div className="page-subtitle"></div>
           </div>
           <div className="pill-row">
             <Link className="btn secondary" to="/screenings">← Retour</Link>
@@ -522,9 +522,7 @@ export default function ScreeningDetails() {
                     >
                       ⬇️ Export PDF
                     </button>
-                    <button className="btn secondary" onClick={() => setShowTech((v) => !v)}>
-                      {showTech ? "Masquer détails techniques" : "Afficher détails techniques"}
-                    </button>
+                    
                   </div>
                 </div>
 
@@ -547,7 +545,7 @@ export default function ScreeningDetails() {
                     <div>
                       <div className="h2" style={{ marginTop: 0 }}>Décision analyst</div>
                       <div className="small" style={{ opacity: 0.9 }}>
-                        Décision prise dans le popup (audit trail) — lecture seule.
+                        
                       </div>
                     </div>
                     <span className="badge">
@@ -616,7 +614,7 @@ export default function ScreeningDetails() {
                   <div>
                     <div className="h2" style={{ marginTop: 0 }}>Profil client</div>
                     <div className="small" style={{ opacity: 0.9 }}>
-                      Identité, données utilisées, et documents soumis (incl. photo ID).
+                      
                     </div>
                   </div>
                   <div className="pill-row">
@@ -712,23 +710,11 @@ export default function ScreeningDetails() {
                   <div>
                     <div className="h2" style={{ marginTop: 0 }}>Formulaire analyst</div>
                     <div className="small" style={{ opacity: 0.9 }}>
-                      Ajuste les champs si besoin (baseline payload › OCR). (Le save API reste à brancher.)
+                     
                     </div>
                   </div>
                   <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button className="btn secondary" onClick={() => setForm(ocrRef.current ?? computedOcr)} title="Revenir aux valeurs OCR">
-                      ↺ Appliquer OCR
-                    </button>
-                    <button className="btn secondary" onClick={() => setForm(baselineRef.current ?? computedBaseline)} title="Annuler les modifications">
-                      🧹 Réinitialiser
-                    </button>
-                    <button
-                      className="btn"
-                      onClick={() => alert("TODO: brancher un endpoint de save.")}
-                      disabled={!isModified || formErrors.length > 0}
-                    >
-                      ✅ Valider
-                    </button>
+                   
                   </div>
                 </div>
 
@@ -739,7 +725,7 @@ export default function ScreeningDetails() {
                 )}
                 {!isModified && (
                   <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
-                    Aucune modification détectée — le bouton <b>Valider</b> reste désactivé.
+                    
                   </div>
                 )}
 
@@ -758,7 +744,7 @@ export default function ScreeningDetails() {
                   <div>
                     <div className="h2" style={{ marginTop: 0 }}>Correspondances trouvées</div>
                     <div className="small" style={{ opacity: 0.9 }}>
-                      Lis d'abord "Motifs / raisons", puis "Source officielle", puis "Pourquoi ce match".
+                      
                     </div>
                   </div>
                   <Badge className={matches.length === 0 ? "badge badge-ok" : "badge badge-warn"}>
