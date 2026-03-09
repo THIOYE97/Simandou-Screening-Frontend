@@ -1,6 +1,6 @@
 // src/pages/Login.tsx
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import {  useLocation, useNavigate } from "react-router-dom";
 import { login } from "../api";
 import { setToken } from "../auth";
 import logo from "../assets/simandou_screening_logo1.png";
@@ -123,12 +123,7 @@ export default function Login() {
 
           <div style={{ height: 12 }} />
 
-          <div className="small" style={{ opacity: 0.8, textAlign: "center" }}>
-            Vous avez une invitation ?{" "}
-            <Link to="/accept-invitation" className="link">
-              Accepter une invitation
-            </Link>
-          </div>
+          
         </form>
       </div>
     </div>
