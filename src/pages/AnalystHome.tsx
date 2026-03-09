@@ -138,6 +138,8 @@ export default function AnalystHome() {
         last_name: entityType === "INDIVIDUAL" ? lastName.trim() : undefined,
         company_name: entityType === "COMPANY" ? companyName.trim() : undefined,
         max_matches: maxMatches,
+        aliases: [],
+        include_aliases: false
       };
 
       const res: any = await launchSimpleScreening(payload);
