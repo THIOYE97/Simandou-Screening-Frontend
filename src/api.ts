@@ -2,20 +2,14 @@
 import axios from "axios";
 import { getToken, clearToken } from "./auth";
 
-// Vercel: définir VITE_API_BASE_URL=https://api.tondomaine.com
-// Dev: fallback sur /api (proxy Vite)
 const rawBase = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
-
-// Nettoie un trailing slash pour éviter "//path"
-const API_BASE_URL =
-  (rawBase && rawBase.trim().replace(/\/+$/, "")) || "/api";
+const API_BASE_URL = (rawBase && rawBase.trim().replace(/\/+$/, "")) || "/api";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 500000,
+  timeout: 60_000,
 });
 
-// attach Bearer token
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -25,7 +19,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// 401 => drop token
 api.interceptors.response.use(
   (r) => r,
   (err) => {
@@ -34,87 +27,292 @@ api.interceptors.response.use(
   }
 );
 
-// --------------------
+// ─────────────────────────────────────────────
+// Shared types
+// ─────────────────────────────────────────────
+
+export interface ScreeningDecision {
+  decision: "PASS" | "BLOCK";
+  comment: string;
+  decided_at: string;
+  decided_by_email: string;
+  decided_by_user_id: string | null;
+  request_id: string | null;
+  case_id: string | null;
+}
+
+export interface MatchExplain {
+  bullets: string[];
+  raw: Record<string, any> | null;
+}
+
+export interface SourceBlock {
+  label: string | null;
+  code: string | null;
+  name: string | null;
+  ref: string | null;
+  record_type: string | null;
+  program: string | null;
+  listed_on: string | null;
+  unlisted_on: string | null;
+  summary: string | null;
+  links: string[];
+}
+
+export interface ScreeningMatch {
+  id: string;
+  request_id: string;
+  entity_id: string | null;
+  entity_name: string | null;
+  source_record_id: string | null;
+  match_score: number;
+  match_band: string | null;
+  match_band_label: string | null;
+  match_explain: MatchExplain;
+  sanction_explain: MatchExplain;
+  source_id: number | null;
+  source_code: string | null;
+  source_name: string | null;
+  source_ref: string | null;
+  record_type: string | null;
+  program: string | null;
+  listed_on: string | null;
+  unlisted_on: string | null;
+  summary: string | null;
+  evidence_urls: string[] | null;
+  source_block: SourceBlock | null;
+  created_at: string | null;
+}
+
+export interface ScreeningResult {
+  id: string;
+  request_id: string;
+  risk_level: "LOW" | "MEDIUM" | "HIGH";
+  confidence: number;
+  recommended_action: "PASS" | "MANUAL_REVIEW" | "BLOCK";
+  decided_by: string | null;
+  decided_at: string | null;
+  notes: string | null;
+}
+
+export interface ScreeningRequest {
+  id: string;               // = request_id (clé primaire de screening_requests)
+  provider: string | null;
+  status: "RUNNING" | "DONE" | "FAILED" | null;
+  created_at: string | null;
+  completed_at: string | null;
+  case_id: string | null;
+  client_id: string | null;
+  request_payload: Record<string, any>;
+  client_name: string | null;
+}
+
+export interface CaseDocument {
+  id: string;
+  case_id: string | null;
+  doc_type: string | null;
+  uploaded_at: string | null;
+  ocr_status: string | null;
+  ocr_confidence: number | null;
+  original_filename: string | null;
+  object_key: string | null;
+  mime: string | null;
+  extracted_fields: Record<string, any> | null;
+}
+
+export interface CaseInfo {
+  id: string;
+  [key: string]: any;
+  documents: CaseDocument[];
+  screening_decision: ScreeningDecision | null;
+  screening_decision_history: ScreeningDecision[];
+}
+
+// ─────────────────────────────────────────────
 // AUTH
-// --------------------
+// ─────────────────────────────────────────────
+
 export async function login(email: string, password: string) {
   const { data } = await api.post("/auth/login", { email, password });
   return data as { access_token: string; token_type: string };
 }
 
-// --------------------
-// SIMPLE SCREENING (existing)
-// --------------------
-export type SimpleScreeningIn = {
-  entity_type: "INDIVIDUAL" | "COMPANY";
-  first_name?: string;
-  last_name?: string;
-  dob?: string;
-  nationality?: string;
-  country?: string;
-  company_name?: string;
-  registration_number?: string;
-  incorporation_country?: string;
-  aliases: string[];
-  include_aliases: boolean;
-  max_matches: number;
-};
+// ─────────────────────────────────────────────
+// SCREENINGS LIST  →  GET /analyst/screenings
+// ─────────────────────────────────────────────
 
-export async function launchSimpleScreening(payload: SimpleScreeningIn) {
-  const { data } = await api.post("/screening/simple", payload);
-  return data as { request_id: string; status: string };
+export interface ScreeningListItem {
+  id: string;           // = screening_request_id — TOUJOURS utiliser pour l'export PDF
+  provider: string | null;
+  status: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+  case_id: string | null;
+  kind: string | null;
+  client_name: string | null;
 }
 
-export async function listScreenings(params: {
+export interface ScreeningListOut {
+  items: ScreeningListItem[];
+  limit: number;
+  offset: number;
+  total: number;
+}
+
+export async function listScreenings(params?: {
   status?: string;
   provider?: string;
   name?: string;
   kind?: string;
   limit?: number;
   offset?: number;
-}) {
+}): Promise<ScreeningListOut> {
   const { data } = await api.get("/analyst/screenings", { params });
-  return data as {
-    items: Array<{
-      id: string;
-      provider?: string | null;
-      status?: string | null;
-      created_at?: string | null;
-      completed_at?: string | null;
-      case_id?: string | null;
-      kind?: string | null;
-    }>;
-    limit: number;
-    offset: number;
-    total: number;
-  };
+  return data;
 }
 
-export async function getScreeningDetails(request_id: string) {
-  const { data } = await api.get(`/analyst/screenings/${request_id}`);
-  return data as {
-    request: Record<string, any>;
-    result?: Record<string, any> | null;
-    matches: Array<Record<string, any>>;
-    case?: Record<string, any> | null;
-  };
+// ─────────────────────────────────────────────
+// SCREENING DETAILS  →  GET /analyst/screenings/{request_id}
+// ─────────────────────────────────────────────
+
+export interface ScreeningDetailsOut {
+  request: ScreeningRequest;
+  result: ScreeningResult | null;
+  matches: ScreeningMatch[];
+  case: CaseInfo | null;
+  decision_latest: ScreeningDecision | null;
+  decision_history: ScreeningDecision[];
 }
 
-// --------------------
-// OCR + SCREENING FROM DOCUMENT (NEW)
-// --------------------
-export type UploadDocResp = {
+export async function getScreeningDetails(
+  requestId: string   // toujours screening_request.id, jamais case_id
+): Promise<ScreeningDetailsOut> {
+  const { data } = await api.get(`/analyst/screenings/${requestId}`);
+  return data;
+}
+
+// ─────────────────────────────────────────────
+// SIMPLE SCREENING  →  POST /screening/simple
+// ─────────────────────────────────────────────
+
+export interface SimpleScreeningIn {
+  entity_type: "INDIVIDUAL" | "COMPANY";
+  case_id?: string;
+  client_id?: string;
+  // Individual
+  first_name?: string;
+  last_name?: string;
+  dob?: string;
+  nationality?: string;
+  country?: string;
+  // Company
+  company_name?: string;
+  registration_number?: string;
+  incorporation_country?: string;
+  // Options
+  aliases?: string[];
+  include_aliases?: boolean;
+  max_matches?: number;
+}
+
+export interface SimpleScreeningOut {
+  request_id: string;   // = screening_request.id
+  risk_level: "LOW" | "MEDIUM" | "HIGH";
+  confidence: number;
+  recommended_action: "PASS" | "MANUAL_REVIEW" | "BLOCK";
+  top_matches: Array<{
+    entity_id: string;
+    entity_risk: string | null;
+    primary_name: string | null;
+    score: number;
+    band: string;
+  }>;
+}
+
+export async function launchSimpleScreening(
+  payload: SimpleScreeningIn,
+  tenantId?: string   // optionnel, pour les super admins
+): Promise<SimpleScreeningOut> {
+  const headers = tenantId ? { "X-Tenant-Id": tenantId } : undefined;
+  const { data } = await api.post("/screening/simple", payload, { headers });
+  return data;
+}
+
+// ─────────────────────────────────────────────
+// DECISION  →  POST /analyst/screenings/{request_id}/decision
+// ─────────────────────────────────────────────
+
+export interface DecisionIn {
+  decision: "PASS" | "BLOCK";
+  comment: string;
+  request_id?: string;
+}
+
+export interface DecisionOut {
+  ok: boolean;
+  case_id: string;
+  request_id: string | null;
+  decision: "PASS" | "BLOCK";
+  decided_by: string;
+  decision_latest: ScreeningDecision | null;
+  decision_history: ScreeningDecision[];
+}
+
+export async function setScreeningDecision(
+  requestId: string,
+  decision: "PASS" | "BLOCK",
+  comment: string
+): Promise<DecisionOut> {
+  const { data } = await api.post(`/analyst/screenings/${requestId}/decision`, {
+    decision,
+    comment,
+  });
+  return data;
+}
+
+// ─────────────────────────────────────────────
+// DECISION par CASE  →  POST /analyst/cases/{case_id}/screening-decision
+// ─────────────────────────────────────────────
+
+export interface CaseDecisionOut {
+  ok: boolean;
+  case_id: string;
+  request_id: string | null;
+  decision: "PASS" | "BLOCK";
+  decided_by: string;
+  decided_at: string;
+}
+
+export async function setCaseScreeningDecision(
+  caseId: string,
+  decision: "PASS" | "BLOCK",
+  comment: string,
+  requestId?: string
+): Promise<CaseDecisionOut> {
+  const { data } = await api.post(`/analyst/cases/${caseId}/screening-decision`, {
+    decision,
+    comment,
+    request_id: requestId,
+  });
+  return data;
+}
+
+// ─────────────────────────────────────────────
+// OCR & DOCUMENTS
+// ─────────────────────────────────────────────
+
+export interface UploadDocResp {
   document_id: string;
-  case_id?: string | null;
+  case_id: string | null;
   ocr_status: string;
   object_key: string;
   preview_url: string;
   download_url: string;
-};
+}
 
-export type OcrExtractResp = {
+export interface OcrExtractResp {
   doc_id: string;
-  case_id?: string | null;
+  case_id: string | null;
   ocr_status: string;
   ocr_confidence: number;
   extracted_fields: {
@@ -122,28 +320,14 @@ export type OcrExtractResp = {
     first_name?: string;
     date_of_birth?: string;
     document_number?: string;
+    [key: string]: string | undefined;
   } | null;
-  prefill?: any;
+  prefill: Record<string, any> | null;
   preview_url: string;
   download_url: string;
-};
+}
 
-export type ScreeningFromDocIn = {
-  document_id: string;
-  client_id?: string;
-  country_focus?: string;
-  override_name?: string;
-};
-
-export type ScreeningOut = {
-  request_id: string;
-  risk_level: string;
-  confidence: number;
-  recommended_action: string;
-  top_matches: Array<any>;
-};
-
-// 1) upload document (recto)
+// Upload avec case
 export async function uploadCaseDocument(
   caseId: string,
   docType: string,
@@ -152,26 +336,11 @@ export async function uploadCaseDocument(
   const form = new FormData();
   form.append("doc_type", docType);
   form.append("file", file);
-
   const { data } = await api.post(`/documents/cases/${caseId}/upload`, form);
-  return data as UploadDocResp;
+  return data;
 }
 
-// 2) OCR extract
-export async function extractOcr(documentId: string): Promise<OcrExtractResp> {
-  const { data } = await api.post(`/documents/${documentId}/extract`, {});
-  return data as OcrExtractResp;
-}
-
-// 3) screening from document
-export async function screeningFromDocument(
-  payload: ScreeningFromDocIn
-): Promise<ScreeningOut> {
-  const { data } = await api.post(`/screening/from-document`, payload);
-  return data as ScreeningOut;
-}
-
-// Upload document standalone (no case)
+// Upload standalone (sans case)
 export async function uploadDocumentStandalone(
   docType: string,
   file: File
@@ -179,39 +348,72 @@ export async function uploadDocumentStandalone(
   const form = new FormData();
   form.append("doc_type", docType);
   form.append("file", file);
-
   const { data } = await api.post(`/documents/upload`, form);
-  return data as UploadDocResp;
+  return data;
 }
 
-// 4) download export (PDF)
-export async function downloadScreeningExportPdf(requestId: string) {
+// OCR extract (async — répond PENDING immédiatement)
+export async function extractOcr(documentId: string): Promise<OcrExtractResp> {
+  const { data } = await api.post(`/documents/${documentId}/extract`, {});
+  return data;
+}
+
+// ─────────────────────────────────────────────
+// SCREENING FROM DOCUMENT
+// ─────────────────────────────────────────────
+
+export interface ScreeningFromDocIn {
+  document_id: string;
+  client_id?: string;
+  country_focus?: string;
+  override_name?: string;
+}
+
+export async function screeningFromDocument(
+  payload: ScreeningFromDocIn
+): Promise<SimpleScreeningOut> {
+  const { data } = await api.post(`/screening/from-document`, payload);
+  return data;
+}
+
+// ─────────────────────────────────────────────
+// EXPORT PDF  →  GET /screening/{request_id}/export.pdf
+//
+// ⚠️  requestId = screening_request.id  (PAS le case_id !)
+// Le champ correct dans ScreeningListItem est `id`, pas `case_id`
+// ─────────────────────────────────────────────
+
+export async function downloadScreeningExportPdf(
+  requestId: string  // = ScreeningListItem.id = ScreeningDetailsOut.request.id
+): Promise<void> {
   const res = await api.get(`/screening/${requestId}/export.pdf`, {
     responseType: "blob",
+    timeout: 120_000,  // PDF peut prendre du temps
   });
   const blob = new Blob([res.data], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
   a.download = `screening_${requestId}.pdf`;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
-export async function setScreeningDecision(
-  requestId: string,
-  decision: "PASS" | "BLOCK",
-  comment: string
-) {
-  const { data } = await api.post(`/analyst/screenings/${requestId}/decision`, {
-    decision,
-    comment,
-  });
-  return data as {
-    ok: boolean;
-    case_id: string;
-    request_id: string;
-    decision: string;
-    decided_by: string;
-  };
+// ─────────────────────────────────────────────
+// EXPORT JSON  →  GET /screening/{request_id}/export.json
+// ─────────────────────────────────────────────
+
+export async function downloadScreeningExportJson(requestId: string): Promise<void> {
+  const res  = await api.get(`/screening/${requestId}/export.json`, { responseType: "blob" });
+  const blob = new Blob([res.data], { type: "application/json" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `screening_${requestId}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
