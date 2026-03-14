@@ -1,891 +1,821 @@
-// src/pages/ScreeningDetails.tsx
+// src/pages/ScreeningDetails.tsx — Redesigned professional UI
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { downloadScreeningExportPdf, getScreeningDetails } from "../api";
-
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
+import { downloadScreeningExportPdf, getScreeningDetails, setScreeningDecision } from "../api";
 
 type AnyObj = Record<string, any>;
+type Tab = "overview" | "details" | "entities" | "audit";
 
-interface DecisionEntry {
-  decision?: string | null;
-  comment?: string | null;
-  decided_by_email?: string | null;
-  decided_at?: string | null;
-}
-
-interface ScreeningDetailsResp {
-  request: AnyObj;
-  result?: AnyObj | null;
-  matches: AnyObj[];
-  decision_latest?: DecisionEntry | null;
-  decision_history?: DecisionEntry[];
-}
-
-interface Identity {
-  lastName: string;
-  firstName: string;
-  dob: string;
-  docNo: string;
-  nationality: string;
-  country: string;
-  countryFocus: string;
-}
-
-interface DocItem {
-  id?: unknown;
-  name?: string;
-  original_filename?: string;
-  mime?: string;
-  preview_url?: string;
-  download_url?: string;
-  ocr_status?: string;
-  ocr_confidence: number | null;
-  extracted_fields?: AnyObj;
-  doc_type?: string;
-  uploaded_at?: string;
-}
-
-interface NormalizedMatch {
-  name: string;
-  score: number | null;
-  band: string | null;
-  sourceBlock: AnyObj | null;
-  sanctionBullets: string[];
-  sanctionRaw: unknown;
-  matchBullets: string[];
-  matchRaw: unknown;
-  reasonsHuman: string | null;
-  raw: AnyObj;
-}
-
-interface FormState {
-  lastName: string;
-  firstName: string;
-  dob: string;
-  docNo: string;
-}
-
-// ─────────────────────────────────────────────
-// Formatters & helpers
-// ─────────────────────────────────────────────
-
-function safeStr(x: unknown): string {
-  return x == null ? "" : String(x).trim();
-}
-
+// ─── Helpers ──────────────────────────────────────────────────────
 function fmtDate(s: unknown): string {
-  if (!s) return "-";
-  try { return new Date(String(s)).toLocaleString(); }
+  if (!s) return "—";
+  try { return new Date(String(s)).toLocaleDateString("fr-FR", { day:"2-digit", month:"short", year:"numeric" }); }
   catch { return String(s); }
 }
-
+function fmtDateTime(s: unknown): string {
+  if (!s) return "—";
+  try { return new Date(String(s)).toLocaleString("fr-FR", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }); }
+  catch { return String(s); }
+}
 function toPct(n: unknown): string | null {
   const x = Number(n);
   if (!Number.isFinite(x)) return null;
   return `${Math.round(x <= 1 ? x * 100 : x)}%`;
 }
-
-function pct(c: number | null | undefined): string {
-  return typeof c === "number" ? `${Math.round(c * 100)}%` : "—";
+function safeStr(x: unknown): string { return x == null ? "" : String(x).trim(); }
+function initials(name: string): string {
+  return (name||"?").split(" ").filter(Boolean).map(n=>n[0]).join("").toUpperCase().slice(0,2);
 }
-
-function isIsoDateLike(v: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(v);
-}
-
-function looksLikeUrl(s: unknown): boolean {
-  return /^https?:\/\/\S+$/i.test(String(s ?? "").trim());
-}
-
-function asText(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v.trim();
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
-}
-
-function splitName(full: unknown): { firstName: string; lastName: string } {
+function splitName(full: unknown) {
   const s = safeStr(full);
-  if (!s) return { firstName: "", lastName: "" };
+  if (!s) return { firstName:"", lastName:"" };
   const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return { firstName: "", lastName: parts[0] };
-  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.slice(-1)[0] };
+  if (parts.length === 1) return { firstName:"", lastName:parts[0] };
+  return { firstName:parts.slice(0,-1).join(" "), lastName:parts.slice(-1)[0] };
 }
 
-// ─────────────────────────────────────────────
-// Badge class helpers
-// ─────────────────────────────────────────────
-
-function statusBadgeClass(status: unknown): string {
-  const v = String(status ?? "").toUpperCase();
-  if (["DONE", "APPROVED", "PASS"].includes(v)) return "badge badge-ok";
-  if (["RUNNING", "PENDING", "PENDING_REVIEW", "MANUAL_REVIEW"].includes(v)) return "badge badge-warn";
-  if (["FAILED", "REJECTED", "ERROR", "BLOCK"].includes(v)) return "badge badge-bad";
-  return "badge";
+// ─── Risk/Status helpers ──────────────────────────────────────────
+function riskColor(r: unknown) {
+  const v = String(r||"").toUpperCase();
+  if (v==="HIGH")   return { bg:"#E84040",  text:"white",   label:"High Risk" };
+  if (v==="MEDIUM") return { bg:"#F5920A",  text:"white",   label:"Medium Risk" };
+  if (v==="LOW")    return { bg:"#2ECC8F",  text:"white",   label:"Low Risk" };
+  return { bg:"#475569", text:"white", label:String(r||"—") };
+}
+function actionStyle(a: unknown) {
+  const v = String(a||"").toUpperCase();
+  if (v==="PASS")          return { color:"#2ECC8F", label:"✓ APPROUVER" };
+  if (v==="MANUAL_REVIEW") return { color:"#F5920A", label:"◆ REVUE MANUELLE" };
+  if (v==="BLOCK")         return { color:"#E84040", label:"✗ BLOQUER" };
+  return { color:"#94A3B8", label:String(a||"—") };
+}
+function statusStyle(s: unknown) {
+  const v = String(s||"").toUpperCase();
+  if (["DONE","APPROVED"].includes(v))      return { bg:"#2ECC8F", label:"Terminé" };
+  if (["RUNNING","PENDING"].includes(v))    return { bg:"#F5920A", label:"Pending" };
+  if (["FAILED","ERROR"].includes(v))       return { bg:"#E84040", label:"Échec" };
+  return { bg:"#475569", label:String(s||"—") };
 }
 
-function decisionBadgeClass(decision: unknown): string {
-  const v = String(decision ?? "").toUpperCase();
-  if (v === "PASS") return "badge badge-ok";
-  if (v === "BLOCK") return "badge badge-bad";
-  return "badge";
-}
-
-function confidenceLabel(c: number | null | undefined): { label: string; tone: string } {
-  if (typeof c !== "number") return { label: "—", tone: "badge" };
-  if (c >= 0.85) return { label: "Très fiable", tone: "badge badge-ok" };
-  if (c >= 0.7)  return { label: "Correct",    tone: "badge badge-warn" };
-  return { label: "Faible", tone: "badge badge-bad" };
-}
-
-// ─────────────────────────────────────────────
-// Human-readable labels
-// ─────────────────────────────────────────────
-
-function humanDecision(d: unknown): string {
-  const v = String(d ?? "").toUpperCase();
-  if (v === "PASS")  return "✅ PASS";
-  if (v === "BLOCK") return "⛔ BLOCK";
-  return v || "—";
-}
-
-function humanProvider(p: unknown): string {
-  const v = String(p ?? "").toUpperCase();
-  if (v === "INTERNAL") return "Interne";
-  if (v === "SUMSUB")   return "Sumsub";
-  return v || "-";
-}
-
-function humanAction(a: unknown): string {
-  const v = String(a ?? "").toUpperCase();
-  if (v === "PASS")          return "✅ Autoriser (Pass)";
-  if (v === "MANUAL_REVIEW") return "🟠 Revue manuelle";
-  if (v === "BLOCK")         return "⛔ Bloquer";
-  return v || "-";
-}
-
-function humanRisk(r: unknown): string {
-  const v = String(r ?? "").toUpperCase();
-  if (v === "LOW")    return "Faible";
-  if (v === "MEDIUM") return "Moyen";
-  if (v === "HIGH")   return "Élevé";
-  return v || "-";
-}
-
-// ─────────────────────────────────────────────
-// Data pickers (read from API payload)
-// ─────────────────────────────────────────────
-
-function pickDecisionLatest(data: ScreeningDetailsResp | null): DecisionEntry | null {
-  return data?.decision_latest ?? (data as any)?.decisionLatest ?? (data as any)?.analyst_decision_latest ?? null;
-}
-
-function pickDecisionHistory(data: ScreeningDetailsResp | null): DecisionEntry[] {
-  const h = data?.decision_history
-    ?? (data as any)?.decisionHistory
-    ?? (data as any)?.analyst_decision_history
-    ?? [];
-  return Array.isArray(h) ? h : [];
-}
-
-function pickIdentity(data: ScreeningDetailsResp | null): Identity {
+// ─── Data pickers ─────────────────────────────────────────────────
+function pickIdentity(data: AnyObj | null) {
   const req     = data?.request ?? {};
   const payload = req.request_payload ?? {};
-
-  const payloadDocs: AnyObj[] = Array.isArray(payload.documents) ? payload.documents : [];
-  const docWithFields = payloadDocs.find((d) => d.extracted_fields || d.extractedFields);
-  const docExtracted  = docWithFields?.extracted_fields ?? docWithFields?.extractedFields ?? null;
-
-  const ocrFields = payload.document_fields ?? payload.documentFields
-    ?? payload.extracted_fields ?? payload.extractedFields
-    ?? payload.ocr ?? docExtracted ?? {};
-
-  const split = splitName(req.client_name ?? req.clientName ?? payload.name ?? payload.full_name ?? "");
-
+  const docs: AnyObj[] = Array.isArray(payload.documents) ? payload.documents : [];
+  const docFields = docs.find(d=>d.extracted_fields)?.extracted_fields ?? {};
+  const ocrFields = payload.document_fields ?? payload.extracted_fields ?? docFields ?? {};
+  const split = splitName(req.client_name ?? payload.name ?? payload.full_name ?? "");
   return {
-    lastName:     safeStr(split.lastName     ?? ocrFields.last_name  ?? ocrFields.lastName  ?? payload.last_name  ?? payload.lastName  ?? ""),
-    firstName:    safeStr(split.firstName    ?? ocrFields.first_name ?? ocrFields.firstName ?? payload.first_name ?? payload.firstName ?? ""),
-    dob:          safeStr(ocrFields.date_of_birth ?? ocrFields.dob ?? payload.dob ?? payload.date_of_birth ?? payload.dateOfBirth ?? ""),
-    docNo:        safeStr(ocrFields.document_number ?? ocrFields.documentNumber ?? payload.document_number ?? payload.documentNumber ?? ""),
-    nationality:  safeStr(payload.nationality  ?? ""),
-    country:      safeStr(payload.country      ?? ""),
-    countryFocus: safeStr(payload.country_focus ?? payload.countryFocus ?? ""),
+    lastName:    safeStr(split.lastName  || ocrFields.last_name  || payload.last_name  || ""),
+    firstName:   safeStr(split.firstName || ocrFields.first_name || payload.first_name || ""),
+    dob:         safeStr(ocrFields.date_of_birth ?? ocrFields.dob ?? payload.dob ?? ""),
+    docNo:       safeStr(ocrFields.document_number ?? payload.document_number ?? ""),
+    nationality: safeStr(payload.nationality ?? ""),
+    country:     safeStr(payload.country ?? ""),
   };
 }
-
-function getDisplayName(identity: Identity, payload: AnyObj | null): string {
-  const override = payload?.override_name;
-  if (override) return String(override).trim();
-  const full = [identity.firstName, identity.lastName].filter(Boolean).join(" ").trim();
+function getDisplayName(data: AnyObj | null): string {
+  const req     = data?.request ?? {};
+  const payload = req.request_payload ?? {};
+  if (payload?.override_name) return String(payload.override_name).trim();
+  const id = pickIdentity(data);
+  const full = [id.firstName, id.lastName].filter(Boolean).join(" ").trim();
   if (full) return full;
-  const company = payload?.company_name ?? payload?.companyName;
-  if (company) return String(company).trim();
-  return payload?.name ? String(payload.name).trim() : "-";
+  return payload?.company_name ?? payload?.name ?? req.client_id ?? "—";
 }
-
-function pickDocuments(data: ScreeningDetailsResp | null): DocItem[] {
-  const payload  = data?.request?.request_payload ?? {};
-  const rawDocs: AnyObj[] = Array.isArray(payload.documents) ? payload.documents : [];
-
-  return rawDocs.map((d) => ({
-    id:                d.id ?? d.document_id ?? d.doc_id,
-    name:              d.name,
-    original_filename: d.original_filename ?? d.originalFilename ?? d.filename,
-    mime:              d.mime ?? d.mime_type ?? d.contentType,
-    preview_url:       d.preview_url  ?? d.previewUrl,
-    download_url:      d.download_url ?? d.downloadUrl,
-    ocr_status:        d.ocr_status   ?? d.ocrStatus,
-    ocr_confidence: (() => {
-      const v = d.ocr_confidence ?? d.ocrConfidence;
-      if (typeof v === "number") return v;
-      if (typeof v === "string" && v.trim() && !isNaN(Number(v))) return Number(v);
-      return null;
-    })(),
-    extracted_fields: d.extracted_fields ?? d.extractedFields,
-    doc_type:         d.doc_type ?? d.docType,
-    uploaded_at:      d.uploaded_at ?? d.uploadedAt,
-  }));
+function deriveCategory(matches: AnyObj[], result: AnyObj | null): string {
+  const action = String(result?.recommended_action || "").toUpperCase();
+  if (action === "BLOCK") return "Sanctions List";
+  if ((matches || []).some(m => String(m.match_band||"").toUpperCase()==="STRONG")) return "Politically Exposed Person (PEP)";
+  if ((matches || []).length > 0) return "Watchlist";
+  return "AML Screening";
 }
-
-function pickMainOcrMeta(data: ScreeningDetailsResp | null) {
+function pickDocuments(data: AnyObj | null) {
   const payload = data?.request?.request_payload ?? {};
-  const docs    = pickDocuments(data);
-
-  const withOcr = docs
-    .filter((d) => d.ocr_status || typeof d.ocr_confidence === "number")
-    .sort((a, b) => Number(b.ocr_confidence ?? 0) - Number(a.ocr_confidence ?? 0));
-
-  if (withOcr.length > 0) {
-    return {
-      status:     withOcr[0].ocr_status ?? null,
-      confidence: typeof withOcr[0].ocr_confidence === "number" ? withOcr[0].ocr_confidence : null,
-    };
-  }
-
-  const cf = payload.ocr_confidence ?? payload.ocrConfidence ?? null;
-  return {
-    status:     payload.ocr_status ? String(payload.ocr_status) : null,
-    confidence: typeof cf === "number" ? cf : cf == null ? null : Number(cf),
-  };
-}
-
-function normalizeMatches(raw: AnyObj[]): NormalizedMatch[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.slice(0, 80).map((m) => ({
-    name:           String(m.entity_name ?? m.entity_primary_name ?? m.name ?? "-"),
-    score:          m.match_score != null ? Number(m.match_score) : m.matchScore != null ? Number(m.matchScore) : m.score != null ? Number(m.score) : null,
-    band:           m.match_band_label ?? m.match_band ?? m.category ?? null,
-    sourceBlock:    m.source_block ?? null,
-    sanctionBullets: Array.isArray(m.sanction_explain?.bullets) ? m.sanction_explain.bullets : [],
-    sanctionRaw:    m.sanction_explain?.raw ?? null,
-    matchBullets:   Array.isArray(m.match_explain?.bullets) ? m.match_explain.bullets : [],
-    matchRaw:       m.match_explain?.raw ?? null,
-    reasonsHuman:   m.reasons_human ?? null,
-    raw:            m,
+  const rawDocs: AnyObj[] = Array.isArray(payload.documents) ? payload.documents : [];
+  return rawDocs.map(d => ({
+    id:               d.id ?? d.document_id,
+    original_filename:d.original_filename ?? d.filename,
+    mime:             d.mime ?? d.mime_type,
+    preview_url:      d.preview_url  ?? d.previewUrl,
+    download_url:     d.download_url ?? d.downloadUrl,
+    ocr_status:       d.ocr_status   ?? d.ocrStatus,
+    ocr_confidence:   typeof (d.ocr_confidence ?? d.ocrConfidence) === "number" ? Number(d.ocr_confidence ?? d.ocrConfidence) : null,
+    doc_type:         d.doc_type ?? d.docType,
   }));
 }
 
-// ─────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────
 
-function Badge({
-  children,
-  className = "badge",
-  title,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  title?: string;
-}) {
-  return <span className={className} title={title}>{children}</span>;
-}
+// Status dropdown (inline)
+function CaseStatusSelect({ value }: { value: string }) {
+  const [open, setOpen] = useState(false);
+  const [cur,  setCur]  = useState(value);
+  const cfg = statusStyle(cur);
+  const opts = ["PENDING","IN_PROGRESS","DONE"];
+  const labels: Record<string,string> = { PENDING:"Pending", IN_PROGRESS:"In Progress", DONE:"Terminé" };
 
-function InputField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  hint?: string;
-}) {
   return (
-    <div style={{ display: "grid", gap: 6 }}>
-      <div className="nice-label">{label}</div>
-      <input
-        className="input"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
-      {hint && <div className="small" style={{ opacity: 0.85 }}>{hint}</div>}
+    <div style={{ position:"relative" }}>
+      <button onClick={()=>setOpen(v=>!v)}
+        style={{ display:"flex",alignItems:"center",gap:6,padding:"4px 12px",borderRadius:20,
+          background:cfg.bg,color:"white",fontWeight:700,fontSize:12,border:"none",cursor:"pointer" }}>
+        {labels[cur]||cur} <span style={{fontSize:9,opacity:0.8}}>▾</span>
+      </button>
+      {open && (
+        <>
+          <div style={{position:"fixed",inset:0,zIndex:50}} onClick={()=>setOpen(false)}/>
+          <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:51,
+            background:"var(--bg-card)",border:"1px solid var(--border-light)",
+            borderRadius:10,padding:4,minWidth:140,boxShadow:"0 8px 24px rgba(0,0,0,0.4)"}}>
+            {opts.map(o=>{
+              const c=statusStyle(o);
+              return (
+                <button key={o} onClick={()=>{setCur(o);setOpen(false);}}
+                  style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px",
+                    borderRadius:7,border:"none",background:cur===o?`${c.bg}22`:"transparent",
+                    color:cur===o?c.bg:"var(--text-secondary)",fontSize:12,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                  <span style={{width:8,height:8,borderRadius:4,background:c.bg,flexShrink:0}}/>
+                  {labels[o]||o}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function BulletList({ bullets, fallback }: { bullets: unknown[]; fallback: string }) {
-  if (bullets.length > 0) {
-    return (
-      <ul className="match-ul">
-        {bullets.slice(0, 12).map((b, i) => <li key={i}>{String(b)}</li>)}
-      </ul>
-    );
-  }
-  return <div className="small" style={{ opacity: 0.9 }}>{fallback}</div>;
-}
+// Match card
+function MatchCard({ match, idx }: { match: AnyObj; idx: number }) {
+  const [exp, setExp] = useState(false);
+  const name    = match.entity_name ?? match.name ?? "—";
+  const score   = match.match_score ?? match.score ?? null;
+  const band    = match.match_band_label ?? match.match_band ?? null;
+  const sb      = match.source_block as any;
+  const bullets = Array.isArray(match.sanction_explain?.bullets) ? match.sanction_explain.bullets : [];
+  const matchBullets = Array.isArray(match.match_explain?.bullets) ? match.match_explain.bullets : [];
+  const isConfirmed = score != null && Number(score) >= 85;
+  const risk   = Number(score||0) >= 85 ? "HIGH" : Number(score||0) >= 70 ? "MEDIUM" : "LOW";
+  const rc     = riskColor(risk);
+  const srcCount = sb?.links?.length || 1;
 
-function RawDetails({ raw, title = "Voir détails bruts" }: { raw: unknown; title?: string }) {
-  if (raw == null) return null;
   return (
-    <details className="match-details">
-      <summary className="badge" style={{ cursor: "pointer" }}>{title}</summary>
-      <div style={{ height: 10 }} />
-      <pre className="match-pre">{JSON.stringify(raw, null, 2)}</pre>
-    </details>
+    <div style={{ border:"1px solid var(--border)", borderRadius:14, overflow:"hidden", marginBottom:10,
+      background: isConfirmed ? "rgba(232,64,64,0.04)" : "rgba(255,255,255,0.02)" }}>
+      {/* Match header */}
+      <div style={{ padding:"12px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}
+        onClick={()=>setExp(v=>!v)}>
+        {/* Avatar */}
+        <div style={{ width:42,height:42,borderRadius:21,background:"rgba(255,255,255,0.08)",
+          border:"2px solid var(--border-light)", display:"flex",alignItems:"center",justifyContent:"center",
+          fontSize:15,fontWeight:700,color:"var(--text-secondary)",flexShrink:0 }}>
+          {initials(name)}
+        </div>
+        {/* Info */}
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <span style={{ fontWeight:700, fontSize:14, color:"var(--text-primary)" }}>{name}</span>
+            {isConfirmed && (
+              <span style={{ padding:"2px 8px",borderRadius:20,background:"rgba(46,204,143,0.15)",
+                color:"#2ECC8F",border:"1px solid rgba(46,204,143,0.3)",fontSize:10,fontWeight:700 }}>
+                ✓ Confirmed Match
+              </span>
+            )}
+          </div>
+          <div className="small" style={{ opacity:0.55, marginTop:2 }}>
+            {sb?.label ?? (band ? `Catégorie: ${band}` : "Source inconnue")}
+            {sb?.program && ` · ${sb.program}`}
+          </div>
+        </div>
+        {/* Right info */}
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
+          <span style={{ padding:"4px 12px",borderRadius:20,background:rc.bg,color:rc.text,
+            fontWeight:700,fontSize:12 }}>{rc.label}</span>
+          <div className="small" style={{ opacity:0.5 }}>
+            📄 {srcCount} Source{srcCount>1?"s":""}&nbsp;·&nbsp;{fmtDate(match.created_at)}
+          </div>
+          {sb?.record_type && (
+            <div className="small" style={{ opacity:0.5 }}>🏷 {srcCount} Source{srcCount>1?"s":""}</div>
+          )}
+        </div>
+        <span style={{ color:"var(--text-muted)", fontSize:11, marginLeft:6 }}>{exp?"▲":"▼"}</span>
+      </div>
+
+      {/* Expanded details */}
+      {exp && (
+        <div style={{ borderTop:"1px solid var(--border)", padding:"12px 16px",
+          background:"rgba(0,0,0,0.15)", display:"grid", gap:10 }}>
+          {/* Score */}
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <div style={{ flex:1 }}>
+              <div className="small" style={{ marginBottom:4, fontWeight:700 }}>Score de correspondance</div>
+              <div style={{ height:6, background:"rgba(255,255,255,0.08)", borderRadius:3 }}>
+                <div style={{ height:"100%", borderRadius:3, width:`${score??0}%`,
+                  background:rc.bg, transition:"width 0.4s ease" }} />
+              </div>
+            </div>
+            <b style={{ fontSize:18, color:rc.bg }}>{score ?? "—"}%</b>
+          </div>
+
+          {/* Sanction motifs */}
+          {bullets.length > 0 && (
+            <div>
+              <div className="small" style={{ fontWeight:700, marginBottom:4, color:"var(--text-muted)",
+                letterSpacing:"0.05em", textTransform:"uppercase", fontSize:10 }}>Motifs</div>
+              {bullets.slice(0,5).map((b:any,i:number)=>(
+                <div key={i} style={{ display:"flex",gap:8,padding:"3px 0" }}>
+                  <span style={{ color:"var(--risk-high)", fontSize:12, flexShrink:0 }}>•</span>
+                  <span className="small">{String(b)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Source info */}
+          {sb && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              {sb.record_type  && <div className="small"><b>Type :</b> {sb.record_type}</div>}
+              {sb.listed_on   && <div className="small"><b>Inscrit le :</b> {sb.listed_on}</div>}
+              {sb.unlisted_on && <div className="small"><b>Retiré le :</b> {sb.unlisted_on}</div>}
+              {sb.summary     && <div className="small" style={{ gridColumn:"1/-1" }}><b>Résumé :</b> {sb.summary}</div>}
+            </div>
+          )}
+
+          {/* Tech match */}
+          {matchBullets.length > 0 && (
+            <details>
+              <summary className="badge" style={{ cursor:"pointer", fontSize:11 }}>Pourquoi ce match (technique)</summary>
+              <div style={{ marginTop:8, display:"grid", gap:4 }}>
+                {matchBullets.slice(0,6).map((b:any,i:number)=>(
+                  <div key={i} className="small" style={{ opacity:0.8 }}>• {String(b)}</div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// Main page
-// ─────────────────────────────────────────────
-
+// ─── Main Component ───────────────────────────────────────────────
 export default function ScreeningDetails() {
   const { id } = useParams<{ id: string }>();
-
   const [busy,    setBusy]    = useState(false);
-  const [err,     setErr]     = useState<string | null>(null);
-  const [data,    setData]    = useState<ScreeningDetailsResp | null>(null);
-  const [showTech, setShowTech] = useState(false);
-
-  const request    = data?.request   ?? null;
-  const result     = data?.result    ?? null;
-  const matchesRaw = Array.isArray(data?.matches) ? data.matches : [];
-
-  const requestPayload  = useMemo(() => request?.request_payload ?? null, [request]);
-  const identity        = useMemo(() => pickIdentity(data), [data]);
-  const displayName     = useMemo(() => getDisplayName(identity, requestPayload), [identity, requestPayload]);
-  const docs            = useMemo(() => pickDocuments(data), [data]);
-  const mainOcr         = useMemo(() => pickMainOcrMeta(data), [data]);
-  const matches         = useMemo(() => normalizeMatches(matchesRaw), [matchesRaw]);
-  const decisionLatest  = useMemo(() => pickDecisionLatest(data), [data]);
-  const decisionHistory = useMemo(() => pickDecisionHistory(data), [data]);
-
-  const summary = useMemo(() => ({
-    risk:       result?.risk_level       ?? result?.riskLevel       ?? null,
-    confidence: result?.confidence       ?? null,
-    action:     result?.recommended_action ?? result?.recommendedAction ?? null,
-  }), [result]);
-
-  const createdAt   = request?.created_at   ?? request?.createdAt   ?? null;
-  const completedAt = request?.completed_at ?? request?.completedAt ?? null;
-  const dossierLabel = displayName !== "-" ? displayName : request?.client_id ?? "-";
+  const [err,     setErr]     = useState<string|null>(null);
+  const [data,    setData]    = useState<AnyObj|null>(null);
+  const [tab,     setTab]     = useState<Tab>("overview");
+  const [comment, setComment] = useState("");
+  const [decBusy, setDecBusy] = useState(false);
+  const [decToast,setDecToast]= useState<string|null>(null);
+  const [noteText,setNoteText]= useState("");
+  const [notes,   setNotes]   = useState<{text:string;time:string;user:string}[]>([]);
 
   async function load() {
     if (!id) return;
-    setBusy(true);
-    setErr(null);
+    setBusy(true); setErr(null);
     try {
       const d = await getScreeningDetails(id);
-      setData(d as ScreeningDetailsResp);
-    } catch (e: any) {
+      setData(d);
+    } catch(e:any) {
       setErr(e?.response?.data?.detail ?? e?.message ?? String(e));
-      setData(null);
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
-  useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{ load(); },[id]); // eslint-disable-line
 
-  // ── Analyst form (local state only) ───────
-  const didInitRef  = useRef(false);
-  const baselineRef = useRef<FormState | null>(null);
-  const ocrRef      = useRef<FormState | null>(null);
-  const [form, setForm] = useState<FormState>({ lastName: "", firstName: "", dob: "", docNo: "" });
-
-  const computedBaseline = useMemo<FormState>(() => ({
-    lastName:  safeStr(identity.lastName),
-    firstName: safeStr(identity.firstName),
-    dob:       safeStr(identity.dob),
-    docNo:     safeStr(identity.docNo),
-  }), [identity]);
-
-  const computedOcr = useMemo<FormState>(() => {
-    const best = docs.find((d) => d.extracted_fields) ?? null;
-    const f    = best?.extracted_fields ?? requestPayload?.extracted_fields ?? requestPayload?.document_fields ?? {};
-    return {
-      lastName:  safeStr(f.last_name  ?? f.lastName  ?? identity.lastName),
-      firstName: safeStr(f.first_name ?? f.firstName ?? identity.firstName),
-      dob:       safeStr(f.date_of_birth ?? f.dob    ?? identity.dob),
-      docNo:     safeStr(f.document_number ?? f.documentNumber ?? identity.docNo),
-    };
-  }, [docs, requestPayload, identity]);
-
-  useEffect(() => {
-    if (!didInitRef.current) {
-      didInitRef.current = true;
-      baselineRef.current = computedBaseline;
-      ocrRef.current = computedOcr;
-      setForm(computedBaseline);
-      return;
-    }
-    const prev     = baselineRef.current;
-    const modified = prev
-      ? form.lastName !== prev.lastName || form.firstName !== prev.firstName
-        || form.dob !== prev.dob || form.docNo !== prev.docNo
-      : false;
-
-    baselineRef.current = computedBaseline;
-    ocrRef.current = computedOcr;
-    if (!modified) setForm(computedBaseline);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [computedBaseline.lastName, computedBaseline.firstName, computedBaseline.dob, computedBaseline.docNo]);
-
-  const isModified = useMemo(() => {
-    const base = baselineRef.current;
-    return base
-      ? form.lastName !== base.lastName || form.firstName !== base.firstName
-        || form.dob !== base.dob || form.docNo !== base.docNo
-      : false;
-  }, [form]);
-
-  const formErrors = useMemo(() => {
-    const errs: string[] = [];
-    if (form.dob && !isIsoDateLike(form.dob)) errs.push("La date de naissance doit être au format YYYY-MM-DD.");
-    return errs;
-  }, [form.dob]);
-
-  function setField(k: keyof FormState, v: string) {
-    setForm((prev) => ({ ...prev, [k]: v }));
+  async function doDecision(decision: "PASS"|"BLOCK") {
+    const c = comment.trim();
+    if (c.length < 4) { setDecToast("❌ Commentaire obligatoire (min 4 car.)."); return; }
+    if (!id) return;
+    setDecBusy(true); setDecToast(null);
+    try {
+      await setScreeningDecision(id, decision, c);
+      setComment("");
+      setDecToast(`✅ Décision ${decision} enregistrée.`);
+      await load();
+    } catch(e:any) {
+      setDecToast(`❌ ${e?.response?.data?.detail || e?.message || "Erreur"}`);
+    } finally { setDecBusy(false); }
   }
 
-  // ─────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────
+  function addNote() {
+    if (!noteText.trim()) return;
+    setNotes(prev=>[...prev, { text:noteText.trim(), time:new Date().toLocaleString("fr-FR"), user:"Moi" }]);
+    setNoteText("");
+  }
+
+  // Derived data
+  const request       = data?.request ?? null;
+  const result        = data?.result  ?? null;
+  const matchesRaw: AnyObj[] = Array.isArray(data?.matches) ? data.matches : [];
+  const decisionLatest= data?.decision_latest ?? null;
+  const decisionHistory: AnyObj[] = Array.isArray(data?.decision_history) ? data.decision_history : [];
+
+  const payload     = request?.request_payload ?? {};
+  const displayName = useMemo(()=>getDisplayName(data),[data]);
+  const identity    = useMemo(()=>pickIdentity(data),[data]);
+  const docs        = useMemo(()=>pickDocuments(data),[data]);
+  const category    = useMemo(()=>deriveCategory(matchesRaw, result),[matchesRaw, result]);
+  const risk        = result?.risk_level ?? null;
+  const rc          = riskColor(risk);
+  const ac          = actionStyle(result?.recommended_action);
+  const ss          = statusStyle(request?.status);
+  const confidence  = result?.confidence ?? null;
+  const createdAt   = request?.created_at ?? null;
+  const caseId      = request?.case_id ?? payload?.case_id ?? null;
+
+  // Sorted matches by score
+  const sortedMatches = useMemo(()=>
+    [...matchesRaw].sort((a,b)=>Number(b.match_score??0)-Number(a.match_score??0))
+  ,[matchesRaw]);
+
+  // Alerts overview stats
+  const highRiskMatches = sortedMatches.filter(m=>Number(m.match_score??0)>=85).length;
+  const assocEntities   = new Set(sortedMatches.map(m=>m.entity_id)).size;
+  const pepMatches      = sortedMatches.filter(m=>String(m.match_band||"").toUpperCase()==="STRONG").length;
+
+  const TABS: { id:Tab; label:string }[] = [
+    { id:"overview", label:"Overview" },
+    { id:"details",  label:"Details" },
+    { id:"entities", label:"Related Entities" },
+    { id:"audit",    label:"Audit Trail" },
+  ];
+
+  if (!data && !busy && !err) return (
+    <div className="screen">
+      <div className="empty-state"><div className="empty-state-icon">🔍</div><div className="empty-state-title">Chargement…</div></div>
+    </div>
+  );
 
   return (
-    <div className="page">
-      <div className="page-inner">
-
-        {/* ── Header ── */}
-        <div className="section-head" style={{ marginBottom: 14 }}>
-          <div style={{ minWidth: 0 }}>
-            <div className="small" style={{ fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Screening Console
-            </div>
-            <div className="page-title">Détails du screening</div>
-            <div className="page-subtitle"></div>
-          </div>
-          <div className="pill-row">
-            <Link className="btn secondary" to="/screenings">← Retour</Link>
-            <button className="btn secondary" onClick={load} disabled={busy}>
-              {busy ? "Actualisation..." : "Refresh"}
-            </button>
-          </div>
+    <>
+      {/* Breadcrumb */}
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, fontSize:12, color:"var(--text-muted)" }}>
+        <Link to="/screenings" style={{ color:"var(--text-muted)", textDecoration:"none" }}>Screening Results</Link>
+        <span>›</span>
+        <span style={{ color:"var(--text-primary)", fontWeight:600 }}>{displayName}</span>
+        <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
+          <button className="btn secondary sm" onClick={load} disabled={busy}>{busy?"…":"↻ Refresh"}</button>
+          <button className="btn sm" onClick={()=>downloadScreeningExportPdf(String(request?.id??id))} disabled={!request?.id&&!id}>
+            ⬇️ Export PDF
+          </button>
         </div>
+      </div>
 
-        {err && <div className="toast">❌ {err}</div>}
+      {err && <div className="toast danger" style={{marginBottom:14}}>❌ {err}</div>}
 
-        {!data ? (
-          <div className="screen">
-            <div className="small">{busy ? "Chargement..." : "Pas de données."}</div>
-          </div>
-        ) : (
-          <div className="grid-2">
+      {!data ? (
+        <div className="screen">
+          <div className="small" style={{textAlign:"center",padding:"40px 0",opacity:0.4}}>{busy?"Chargement…":"Aucune donnée."}</div>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 280px", gap:20, alignItems:"start" }}>
 
-            {/* ── LEFT COLUMN ── */}
-            <div className="screen">
+          {/* ── MAIN CONTENT ── */}
+          <div>
+            {/* Profile card */}
+            <div className="screen" style={{ marginBottom:16 }}>
+              <div style={{ display:"flex", gap:20, alignItems:"flex-start", flexWrap:"wrap" }}>
+                {/* Avatar */}
+                <div style={{ width:80, height:80, borderRadius:40,
+                  background:"linear-gradient(135deg,rgba(45,127,214,0.3),rgba(45,127,214,0.1))",
+                  border:"2px solid var(--border-active)", display:"flex", alignItems:"center",
+                  justifyContent:"center", fontSize:28, fontWeight:800, color:"var(--text-accent)",
+                  flexShrink:0, letterSpacing:-1 }}>
+                  {initials(displayName)}
+                </div>
 
-              {/* Résumé */}
-              <div className="card" style={{ marginTop: 0 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="h2" style={{ marginTop: 0, marginBottom: 6 }}>Résumé</div>
-                    <div className="small" style={{ opacity: 0.9 }}>
-                      Screening #{request?.id ?? id} — {humanProvider(request?.provider)} — {fmtDate(createdAt)}
-                    </div>
+                {/* Info */}
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:4 }}>
+                    <h1 style={{ margin:0, fontSize:22, fontWeight:800, color:"var(--text-primary)", letterSpacing:-0.5 }}>
+                      {displayName}
+                    </h1>
+                    {payload?.nationality && <span style={{ fontSize:18 }}>🏳️</span>}
+                    <span style={{ opacity:0.4, fontSize:16 }}>☆</span>
                   </div>
-                  <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button
-                      className="btn"
-                      onClick={() => downloadScreeningExportPdf(String(request?.id ?? id))}
-                      disabled={!request?.id && !id}
-                      title="Télécharger un PDF (partageable)"
-                    >
-                      ⬇️ Export PDF
-                    </button>
-                    
+                  <div className="small" style={{ marginBottom:10, opacity:0.7 }}>{category}</div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    {risk && (
+                      <span style={{ padding:"5px 14px", borderRadius:20, background:rc.bg,
+                        color:rc.text, fontWeight:700, fontSize:12 }}>
+                        {rc.label}
+                      </span>
+                    )}
+                    <button className="btn secondary sm">+ More…</button>
                   </div>
                 </div>
 
-                <div style={{ height: 12 }} />
-
-                <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                  <Badge className={statusBadgeClass(request?.status)} title="État actuel">
-                    Statut: {request?.status ?? "-"}
-                  </Badge>
-                  <Badge title="Nom du client screené">Dossier: <b>{dossierLabel}</b></Badge>
-                  <Badge title="Action recommandée">Décision recommandée: <b>{humanAction(summary.action)}</b></Badge>
-                  <Badge title="Niveau de risque">Risque: <b>{humanRisk(summary.risk)}</b></Badge>
-                  <Badge title="Indice de confiance">Confiance: <b>{toPct(summary.confidence) ?? "-"}</b></Badge>
-                  <Badge title="Correspondances">Correspondances: <b>{matches.length}</b></Badge>
-                </div>
-
-                {/* Décision analyst */}
-                <div className="card" style={{ marginTop: 12 }}>
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div className="h2" style={{ marginTop: 0 }}>Décision analyst</div>
-                      <div className="small" style={{ opacity: 0.9 }}>
-                        
-                      </div>
-                    </div>
-                    <span className="badge">
-                      Dernière: <b>{decisionLatest ? humanDecision(decisionLatest.decision) : "—"}</b>
-                    </span>
-                  </div>
-
-                  <div style={{ height: 10 }} />
-
-                  {!decisionLatest ? (
-                    <div className="small" style={{ opacity: 0.85 }}>Aucune décision enregistrée pour l'instant.</div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 8 }}>
-                      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                        <span className={decisionBadgeClass(decisionLatest.decision)}>
-                          Décision: <b>{humanDecision(decisionLatest.decision)}</b>
-                        </span>
-                        {decisionLatest.decided_by_email && (
-                          <span className="badge">par: <b>{decisionLatest.decided_by_email}</b></span>
-                        )}
-                        {decisionLatest.decided_at && (
-                          <span className="badge">le: <b>{fmtDate(decisionLatest.decided_at)}</b></span>
-                        )}
-                      </div>
-                      <div className="small" style={{ opacity: decisionLatest.comment ? 0.95 : 0.85, lineHeight: 1.6 }}>
-                        <b>Raison :</b> {decisionLatest.comment ? String(decisionLatest.comment) : "—"}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Historique décisions */}
-                {decisionHistory.length > 0 && (
-                  <details style={{ marginTop: 12 }}>
-                    <summary className="badge" style={{ cursor: "pointer" }}>
-                      Voir historique ({decisionHistory.length})
-                    </summary>
-                    <div style={{ height: 10 }} />
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {decisionHistory.slice(0, 50).map((d, i) => (
-                        <div
-                          key={i}
-                          style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 10, background: "rgba(255,255,255,0.03)" }}
-                        >
-                          <div className="row" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                            <span className={decisionBadgeClass(d.decision)}>
-                              <b>{humanDecision(d.decision)}</b>
-                            </span>
-                            <span className="small" style={{ opacity: 0.85 }}>
-                              {fmtDate(d.decided_at)} · {d.decided_by_email ?? "—"}
-                            </span>
-                          </div>
-                          <div className="small" style={{ opacity: 0.92, marginTop: 6, lineHeight: 1.6 }}>
-                            {d.comment ?? "—"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-
-              {/* Profil client */}
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "end", gap: 10 }}>
-                  <div>
-                    <div className="h2" style={{ marginTop: 0 }}>Profil client</div>
-                    <div className="small" style={{ opacity: 0.9 }}>
-                      
-                    </div>
-                  </div>
-                  <div className="pill-row">
-                    <span className="badge">ocr_status: <b style={{ marginLeft: 6 }}>{mainOcr.status ?? "—"}</b></span>
-                    <span className="badge">conf globale: <b style={{ marginLeft: 6 }}>{pct(mainOcr.confidence)}</b></span>
-                    <span className={confidenceLabel(mainOcr.confidence).tone}>
-                      {confidenceLabel(mainOcr.confidence).label}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ height: 12 }} />
-
-                <div className="profile-grid">
-                  {[
-                    ["Nom",               identity.lastName],
-                    ["Prénoms",           identity.firstName],
-                    ["Date de naissance", identity.dob],
-                    ["N° document",       identity.docNo],
-                    ["Nationalité",       identity.nationality],
-                    ["Pays",              identity.country],
-                  ].map(([label, value]) => (
-                    <div className="profile-field" key={label}>
-                      <div className="profile-label">{label}</div>
-                      <div className="profile-value">{value || "—"}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ height: 14 }} />
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>Documents soumis</div>
-
-                {docs.length === 0 ? (
-                  <div className="small" style={{ opacity: 0.85 }}>Aucun document disponible pour ce screening.</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {docs.map((d, idx) => {
-                      const mime    = d.mime ?? "";
-                      const isImage = mime.startsWith("image/");
-                      const isPdf   = mime === "application/pdf" || (d.original_filename ?? "").toLowerCase().endsWith(".pdf");
-                      const title   = d.original_filename ?? d.name ?? `Document ${idx + 1}`;
-
-                      return (
-                        <div
-                          key={idx}
-                          style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.03)" }}
-                        >
-                          <div className="row" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontWeight: 800 }}>{title}</div>
-                              <div className="small" style={{ opacity: 0.85, marginTop: 4 }}>
-                                {d.doc_type        && <><b>Type:</b> {d.doc_type} · </>}
-                                {mime              && <><b>MIME:</b> {mime} · </>}
-                                {d.ocr_status      && <><b>OCR:</b> {d.ocr_status} · </>}
-                                {typeof d.ocr_confidence === "number" && (
-                                  <><b>Conf:</b> {Math.round(d.ocr_confidence * 100)}%</>
-                                )}
-                              </div>
-                            </div>
-                            <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                              {d.download_url && (
-                                <a className="btn secondary" href={d.download_url} target="_blank" rel="noreferrer">⬇️ Télécharger</a>
-                              )}
-                              {d.preview_url && !isImage && (
-                                <a className="btn secondary" href={d.preview_url} target="_blank" rel="noreferrer">
-                                  {isPdf ? "📄 Ouvrir PDF" : "👁️ Ouvrir"}
-                                </a>
-                              )}
-                            </div>
-                          </div>
-
-                          {d.preview_url && isImage && (
-                            <>
-                              <div style={{ height: 10 }} />
-                              <img
-                                src={d.preview_url}
-                                alt={title}
-                                style={{ width: "100%", maxHeight: 320, objectFit: "contain", borderRadius: 12,
-                                         border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.2)" }}
-                              />
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Formulaire analyst */}
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "end", gap: 10 }}>
-                  <div>
-                    <div className="h2" style={{ marginTop: 0 }}>Formulaire analyst</div>
-                    <div className="small" style={{ opacity: 0.9 }}>
-                     
-                    </div>
-                  </div>
-                  <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                   
-                  </div>
-                </div>
-
-                <div style={{ height: 12 }} />
-
-                {formErrors.length > 0 && (
-                  <div className="toast" style={{ margin: 0 }}>❌ {formErrors.join(" ")}</div>
-                )}
-                {!isModified && (
-                  <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
-                    
-                  </div>
-                )}
-
-                <div style={{ height: 10 }} />
-                <div style={{ display: "grid", gap: 14 }}>
-                  <InputField label="Nom"               value={form.lastName}  onChange={(v) => setField("lastName",  v)} placeholder="Ex: TRAORÉ" />
-                  <InputField label="Prénoms"            value={form.firstName} onChange={(v) => setField("firstName", v)} placeholder="Ex: Awa Mariam" />
-                  <InputField label="Date de naissance"  value={form.dob}       onChange={(v) => setField("dob",       v)} placeholder="YYYY-MM-DD" hint="Format recommandé: YYYY-MM-DD" />
-                  <InputField label="N° Document"        value={form.docNo}     onChange={(v) => setField("docNo",     v)} placeholder="Ex: AB1234567" />
-                </div>
-              </div>
-
-              {/* Correspondances */}
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "end", gap: 10 }}>
-                  <div>
-                    <div className="h2" style={{ marginTop: 0 }}>Correspondances trouvées</div>
-                    <div className="small" style={{ opacity: 0.9 }}>
-                      
-                    </div>
-                  </div>
-                  <Badge className={matches.length === 0 ? "badge badge-ok" : "badge badge-warn"}>
-                    {matches.length === 0 ? "Aucune correspondance" : `${matches.length} résultat(s)`}
-                  </Badge>
-                </div>
-
-                <div style={{ height: 12 }} />
-
-                {matches.length === 0 ? (
-                  <div className="small" style={{ opacity: 0.9 }}>Rien à signaler pour l'instant.</div>
-                ) : (
-                  <div className="match-list">
-                    {matches.map((m, idx) => {
-                      const scorePct = toPct(m.score);
-                      const tone     = m.score != null && m.score >= 90 ? "badge badge-bad"
-                                     : m.score != null && m.score >= 75 ? "badge badge-warn"
-                                     : "badge";
-                      const sb = m.sourceBlock as any;
-
-                      return (
-                        <div className="match-card" key={idx}>
-                          <div className="match-top">
-                            <div style={{ minWidth: 0 }}>
-                              <div className="match-name">{m.name}</div>
-                              <div className="match-meta">
-                                {m.band    && <>Catégorie : <b>{m.band}</b></>}
-                                {sb?.label && <> · Source : <b>{sb.label}</b></>}
-                                {sb?.ref   && <> · Réf : <b>{sb.ref}</b></>}
-                                {sb?.program && <> · Programme : <b>{sb.program}</b></>}
-                              </div>
-                            </div>
-                            <span className={tone}>Score : <b>{scorePct ?? "—"}</b></span>
-                          </div>
-
-                          <div className="match-section">
-                            <div className="match-section-title">Motifs / raisons (sanction / décision)</div>
-                            <BulletList bullets={m.sanctionBullets} fallback={sb?.summary ?? "Aucun motif détaillé dans la source."} />
-                            <RawDetails raw={m.sanctionRaw} title="Voir détails bruts (source / sanction)" />
-                          </div>
-
-                          {sb && (
-                            <div className="match-section">
-                              <div className="match-section-title">Source officielle</div>
-                              <div className="match-par" style={{ display: "grid", gap: 6 }}>
-                                {sb.record_type && <div><b>Type :</b> {sb.record_type}</div>}
-                                {sb.listed_on   && <div><b>Inscrit le :</b> {sb.listed_on}</div>}
-                                {sb.unlisted_on && <div><b>Retiré le :</b> {sb.unlisted_on}</div>}
-                                {sb.summary     && <div><b>Résumé :</b> {sb.summary}</div>}
-                              </div>
-                              {Array.isArray(sb.links) && sb.links.length > 0 && (
-                                <div className="match-par" style={{ marginTop: 8 }}>
-                                  <b>Liens (preuves) :</b>
-                                  <ul className="match-ul">
-                                    {sb.links.map(asText).filter(looksLikeUrl).slice(0, 8).map((u: string, i: number) => (
-                                      <li key={i}><a href={u} target="_blank" rel="noreferrer">{u}</a></li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <details className="match-details">
-                            <summary className="badge" style={{ cursor: "pointer" }}>Pourquoi ce match (technique)</summary>
-                            <div style={{ height: 10 }} />
-                            <BulletList
-                              bullets={m.matchBullets}
-                              fallback={m.reasonsHuman ?? "Correspondance détectée par le moteur (détails techniques disponibles)."}
-                            />
-                            <RawDetails raw={m.matchRaw ?? (m.raw as any)?.reasons ?? m.raw} title="Voir raisons brutes (matching)" />
-                          </details>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Chronologie */}
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="h2" style={{ marginTop: 0 }}>Chronologie</div>
-                <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                  <Badge title="Création">Créé: <b>{fmtDate(createdAt)}</b></Badge>
-                  <Badge title="Fin">Terminé: <b>{fmtDate(completedAt)}</b></Badge>
-                </div>
-              </div>
-            </div>
-
-            {/* ── RIGHT COLUMN ── */}
-            <div className="screen">
-              <div className="h2" style={{ marginTop: 0 }}>Aide & Explications</div>
-
-              <div className="card" style={{ marginTop: 8 }}>
-                <div className="small" style={{ lineHeight: 1.7, opacity: 0.95 }}>
-                  <b>Comment lire cette page ?</b>
-                  <ul style={{ marginTop: 8 }}>
-                    <li><b>Motifs sanction</b> : la partie la plus importante (source officielle).</li>
-                    <li><b>Source officielle</b> : type, programme, dates, liens.</li>
-                    <li><b>Pourquoi ce match</b> : explications techniques.</li>
-                    <li><b>Décision analyst</b> : affichée en lecture seule (prise dans le popup).</li>
-                  </ul>
-                </div>
-                <div style={{ height: 10 }} />
-                <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-                  <Link className="btn secondary" to="/screenings">📋 Retour à la liste</Link>
-                  <button
-                    className="btn secondary"
-                    onClick={() => downloadScreeningExportPdf(String(request?.id ?? id))}
-                    disabled={!request?.id && !id}
-                  >
-                    ⬇️ Export PDF
+                {/* Action buttons */}
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end", flexShrink:0 }}>
+                  <button className="btn secondary sm" onClick={()=>doDecision("PASS")} disabled={decBusy} title="Marquer comme faux positif">
+                    False Positive
                   </button>
+                  <button className="btn secondary sm" title="Rejeter la correspondance">Dismiss Match</button>
+                  <button className="btn secondary sm">Create Case</button>
+                  <button className="btn sm">Assign ▾</button>
                 </div>
               </div>
 
-              {/* Détails techniques */}
-              {showTech && (
-                <div className="card" style={{ marginTop: 12 }}>
-                  <div className="h2" style={{ marginTop: 0 }}>Détails techniques</div>
-                  <div className="small" style={{ opacity: 0.9, marginBottom: 8 }}>À utiliser uniquement en debug.</div>
-
-                  {[
-                    ["request (raw)", request],
-                    ["result (raw)",  result],
-                    ["matches (raw)", matchesRaw],
-                    ["data (raw)",    data],
-                  ].map(([label, val]) => (
-                    <details key={String(label)} style={{ marginBottom: 10 }}>
-                      <summary className="badge" style={{ cursor: "pointer" }}>Voir {label}</summary>
-                      <div style={{ height: 10 }} />
-                      <textarea readOnly value={JSON.stringify(val ?? null, null, 2)} />
-                    </details>
-                  ))}
+              {decToast && (
+                <div className={`toast ${decToast.startsWith("✅")?"ok":"danger"}`} style={{marginTop:12}}>
+                  {decToast}
                 </div>
               )}
             </div>
 
+            {/* Tabs */}
+            <div style={{ display:"flex", gap:0, borderBottom:"1px solid var(--border)", marginBottom:16 }}>
+              {TABS.map(t=>(
+                <button key={t.id} onClick={()=>setTab(t.id)}
+                  style={{ padding:"10px 18px", background:"none", border:"none",
+                    borderBottom:`2px solid ${tab===t.id?"var(--accent)":"transparent"}`,
+                    color:tab===t.id?"var(--text-accent)":"var(--text-muted)",
+                    fontWeight:tab===t.id?700:500, fontSize:13.5, cursor:"pointer",
+                    transition:"all 0.15s", marginBottom:-1 }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* ── OVERVIEW TAB ── */}
+            {tab==="overview" && (
+              <div>
+                {/* Possible Matches */}
+                <div style={{ marginBottom:20 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                    <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"var(--text-primary)" }}>Possible Matches</h2>
+                    <span className={`badge ${sortedMatches.length===0?"badge-ok":"badge-warn"}`}>
+                      {sortedMatches.length===0?"Aucune correspondance":`${sortedMatches.length} résultat(s)`}
+                    </span>
+                  </div>
+                  {sortedMatches.length===0 ? (
+                    <div className="screen">
+                      <div className="empty-state" style={{padding:"24px 0"}}>
+                        <div className="empty-state-icon">✅</div>
+                        <div className="empty-state-title">Aucune correspondance</div>
+                        <div className="empty-state-sub">Aucune entité sanctionnée trouvée.</div>
+                      </div>
+                    </div>
+                  ) : sortedMatches.map((m,i)=>(
+                    <MatchCard key={i} match={m} idx={i}/>
+                  ))}
+                </div>
+
+                {/* Risk Profile */}
+                {sortedMatches.length > 0 && (
+                  <div className="screen" style={{ marginBottom:20 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                      <h2 style={{ margin:0, fontSize:16, fontWeight:700 }}>Risk Profile</h2>
+                      <button style={{ background:"none", border:"none", color:"var(--text-muted)", cursor:"pointer", fontSize:18 }}>▼</button>
+                    </div>
+                    <div style={{ display:"grid", gap:10 }}>
+                      {sortedMatches.slice(0,3).map((m,i)=>{
+                        const name  = m.entity_name ?? m.name ?? "—";
+                        const score = m.match_score ?? 0;
+                        const risk2 = score>=85?"HIGH":score>=70?"MEDIUM":"LOW";
+                        const rc2   = riskColor(risk2);
+                        const sb    = m.source_block as any;
+                        return (
+                          <div key={i} style={{ display:"flex", alignItems:"center", gap:12,
+                            padding:"10px 14px", background:"rgba(255,255,255,0.03)",
+                            border:"1px solid var(--border)", borderRadius:12 }}>
+                            <div style={{ width:36,height:36,borderRadius:18,background:`${rc2.bg}22`,
+                              border:`1px solid ${rc2.bg}44`,display:"flex",alignItems:"center",
+                              justifyContent:"center",fontSize:13,fontWeight:700,color:rc2.bg,flexShrink:0 }}>
+                              {initials(name)}
+                            </div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontWeight:700, fontSize:13, color:"var(--text-primary)" }}>{name}</div>
+                              <div className="small" style={{ opacity:0.55, marginTop:1 }}>
+                                {sb?.label ?? "Source"} &nbsp;·&nbsp; Matchs: {score}% · {fmtDate(m.created_at)}
+                              </div>
+                              {sb?.program && (
+                                <div className="small" style={{ marginTop:2 }}>
+                                  <span style={{ padding:"1px 7px", borderRadius:20, background:"rgba(45,127,214,0.12)",
+                                    color:"var(--text-accent)", fontSize:10, fontWeight:600 }}>
+                                    {sb.program}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <span style={{ padding:"4px 10px", borderRadius:20, background:rc2.bg,
+                              color:rc2.text, fontWeight:700, fontSize:11, flexShrink:0 }}>
+                              {rc2.label}
+                            </span>
+                            {payload?.nationality && <span style={{ fontSize:16, flexShrink:0 }}>🏳️</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional Details */}
+                {(identity.dob || identity.docNo || identity.nationality) && (
+                  <div className="screen" style={{ marginBottom:20 }}>
+                    <h2 style={{ margin:"0 0 12px", fontSize:16, fontWeight:700 }}>Additional Details</h2>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      {identity.dob        && <div><div className="profile-label">Date de naissance</div><div className="profile-value">{identity.dob}</div></div>}
+                      {identity.docNo      && <div><div className="profile-label">N° Document</div><div className="profile-value">{identity.docNo}</div></div>}
+                      {identity.nationality&& <div><div className="profile-label">Nationalité</div><div className="profile-value">{identity.nationality}</div></div>}
+                      {identity.country    && <div><div className="profile-label">Pays</div><div className="profile-value">{identity.country}</div></div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Comments / Decision */}
+                <div className="screen">
+                  <h2 style={{ margin:"0 0 12px", fontSize:16, fontWeight:700 }}>Comments & Decision</h2>
+
+                  {/* Decision history */}
+                  {decisionHistory.length > 0 && (
+                    <div style={{ marginBottom:14, display:"grid", gap:8 }}>
+                      {decisionHistory.slice(0,3).map((d,i)=>(
+                        <div key={i} style={{ display:"flex", gap:12, alignItems:"flex-start",
+                          padding:"10px 14px", background:"rgba(255,255,255,0.03)",
+                          border:"1px solid var(--border)", borderRadius:10 }}>
+                          <div style={{ width:32,height:32,borderRadius:16,background:"var(--accent)",
+                            display:"flex",alignItems:"center",justifyContent:"center",
+                            fontSize:12,fontWeight:700,color:"white",flexShrink:0 }}>
+                            {(d.decided_by_email||"A")[0].toUpperCase()}
+                          </div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:4 }}>
+                              <span style={{ fontWeight:600, fontSize:13 }}>{d.decided_by_email||"Analyst"}</span>
+                              <span className="badge" style={{ fontSize:10 }}>{fmtDateTime(d.decided_at)}</span>
+                              <span className={`badge ${d.decision==="PASS"?"badge-ok":"badge-bad"}`}>
+                                {d.decision==="PASS"?"✅ PASS":"⛔ BLOCK"}
+                              </span>
+                            </div>
+                            <div className="small">{d.comment || "—"}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Decision input */}
+                  <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid var(--border)", borderRadius:12, padding:12 }}>
+                    <div className="small" style={{ marginBottom:8, fontWeight:600, opacity:0.7 }}>
+                      PASS ou BLOCK — commentaire obligatoire (min 4 caractères)
+                    </div>
+                    <textarea value={comment} onChange={e=>setComment(e.target.value)}
+                      placeholder="Justification de la décision…"
+                      style={{ width:"100%", marginBottom:10, minHeight:70, resize:"vertical" }} />
+                    <div className="row" style={{ gap:8 }}>
+                      <button className="btn" style={{ background:"#2ECC8F", borderColor:"#2ECC8F" }}
+                        disabled={decBusy||comment.trim().length<4} onClick={()=>doDecision("PASS")}>
+                        ✅ PASS
+                      </button>
+                      <button className="btn danger" disabled={decBusy||comment.trim().length<4}
+                        onClick={()=>doDecision("BLOCK")}>⛔ BLOCK</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── DETAILS TAB ── */}
+            {tab==="details" && (
+              <div className="screen">
+                <h2 style={{ margin:"0 0 16px", fontSize:16, fontWeight:700 }}>Informations du dossier</h2>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                  {[
+                    ["Request ID",  String(request?.id||"—")],
+                    ["Statut",      String(request?.status||"—")],
+                    ["Provider",    String(request?.provider||"INTERNAL")],
+                    ["Case ID",     caseId||"—"],
+                    ["Créé le",     fmtDateTime(createdAt)],
+                    ["Terminé le",  fmtDateTime(request?.completed_at)],
+                    ["Risque",      risk||"—"],
+                    ["Confiance",   confidence!=null?`${confidence}%`:"—"],
+                    ["Action",      String(result?.recommended_action||"—")],
+                    ["Nom",         displayName],
+                    ["Prénoms",     identity.firstName||"—"],
+                    ["DOB",         identity.dob||"—"],
+                    ["N° Doc",      identity.docNo||"—"],
+                    ["Nationalité", identity.nationality||"—"],
+                  ].map(([label,value])=>(
+                    <div key={label} style={{ padding:"8px 0", borderBottom:"1px solid var(--border)" }}>
+                      <div className="profile-label">{label}</div>
+                      <div className="profile-value" style={{ fontFamily:label==="Request ID"||label==="Case ID"?"monospace":"inherit", fontSize:label==="Request ID"?11:undefined }}>
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Documents */}
+                {docs.length > 0 && (
+                  <div style={{ marginTop:20 }}>
+                    <h2 style={{ margin:"0 0 12px", fontSize:15, fontWeight:700 }}>Documents soumis</h2>
+                    {docs.map((d,i)=>(
+                      <div key={i} style={{ padding:"10px 14px", background:"rgba(255,255,255,0.03)",
+                        border:"1px solid var(--border)", borderRadius:10, marginBottom:8,
+                        display:"flex", alignItems:"center", gap:10 }}>
+                        <span style={{ fontSize:20 }}>📄</span>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:600, fontSize:13 }}>{d.original_filename||`Document ${i+1}`}</div>
+                          <div className="small" style={{ opacity:0.5 }}>
+                            {d.doc_type} {d.ocr_status&&`· OCR: ${d.ocr_status}`}
+                            {d.ocr_confidence!=null&&` · Conf: ${Math.round(d.ocr_confidence*100)}%`}
+                          </div>
+                        </div>
+                        {d.download_url && <a className="btn secondary sm" href={d.download_url} target="_blank" rel="noreferrer">⬇️</a>}
+                        {d.preview_url  && <a className="btn secondary sm" href={d.preview_url}  target="_blank" rel="noreferrer">👁️</a>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Debug */}
+                <details style={{ marginTop:16 }}>
+                  <summary className="badge" style={{ cursor:"pointer" }}>🔧 Debug (raw data)</summary>
+                  <textarea readOnly style={{ marginTop:8, minHeight:200, fontFamily:"monospace", fontSize:11 }}
+                    value={JSON.stringify(data, null, 2)} />
+                </details>
+              </div>
+            )}
+
+            {/* ── RELATED ENTITIES TAB ── */}
+            {tab==="entities" && (
+              <div className="screen">
+                <h2 style={{ margin:"0 0 16px", fontSize:16, fontWeight:700 }}>
+                  Entités liées ({sortedMatches.length})
+                </h2>
+                {sortedMatches.length===0 ? (
+                  <div className="empty-state"><div className="empty-state-title">Aucune entité liée.</div></div>
+                ) : sortedMatches.map((m,i)=>{
+                  const name  = m.entity_name ?? m.name ?? "—";
+                  const score = m.match_score ?? 0;
+                  const risk2 = score>=85?"HIGH":score>=70?"MEDIUM":"LOW";
+                  const rc2   = riskColor(risk2);
+                  const sb    = m.source_block as any;
+                  return (
+                    <div key={i} style={{ marginBottom:10, padding:"12px 16px",
+                      background:"rgba(255,255,255,0.03)", border:"1px solid var(--border)", borderRadius:12 }}>
+                      <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                        <div style={{ width:40,height:40,borderRadius:20,background:`${rc2.bg}22`,
+                          border:`1.5px solid ${rc2.bg}55`,display:"flex",alignItems:"center",
+                          justifyContent:"center",fontSize:14,fontWeight:700,color:rc2.bg }}>
+                          {initials(name)}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:700, fontSize:13 }}>{name}</div>
+                          <div className="small" style={{ opacity:0.5 }}>{sb?.label||"Source"} · {sb?.record_type||"—"}</div>
+                        </div>
+                        <span style={{ padding:"3px 10px",borderRadius:20,background:rc2.bg,color:"white",fontSize:11,fontWeight:700 }}>{rc2.label}</span>
+                      </div>
+                      {sb?.links && Array.isArray(sb.links) && sb.links.slice(0,2).map((url:string,j:number)=>(
+                        <a key={j} href={url} target="_blank" rel="noreferrer"
+                          className="small" style={{ display:"block",marginTop:4,color:"var(--text-accent)" }}>
+                          🔗 {url.slice(0,70)}{url.length>70?"…":""}
+                        </a>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── AUDIT TRAIL TAB ── */}
+            {tab==="audit" && (
+              <div className="screen">
+                <h2 style={{ margin:"0 0 16px", fontSize:16, fontWeight:700 }}>Audit Trail</h2>
+                <div style={{ position:"relative", paddingLeft:24 }}>
+                  {/* Timeline line */}
+                  <div style={{ position:"absolute", left:7, top:0, bottom:0, width:2,
+                    background:"var(--border)", borderRadius:2 }} />
+                  {[
+                    { icon:"🔍", title:"Screening lancé",   time:fmtDateTime(createdAt), detail:`Provider: ${request?.provider||"INTERNAL"}` },
+                    { icon:"⚙️", title:"Analyse en cours",  time:fmtDateTime(createdAt), detail:"Moteur de matching actif" },
+                    ...(matchesRaw.length>0?[{ icon:"⚠️", title:`${matchesRaw.length} correspondance(s) trouvée(s)`, time:fmtDateTime(request?.completed_at||createdAt), detail:`Risk: ${risk||"—"}` }]:[]),
+                    ...(request?.completed_at?[{ icon:"✅", title:"Screening terminé", time:fmtDateTime(request.completed_at), detail:`Statut: ${request.status||"DONE"}` }]:[]),
+                    ...decisionHistory.map(d=>({ icon:d.decision==="PASS"?"✅":"⛔",
+                      title:`Décision: ${d.decision}`, time:fmtDateTime(d.decided_at),
+                      detail:`Par ${d.decided_by_email||"analyst"} — ${d.comment||""}` })),
+                  ].map((ev,i)=>(
+                    <div key={i} style={{ display:"flex", gap:16, marginBottom:16, position:"relative" }}>
+                      <div style={{ width:16,height:16,borderRadius:8,background:"var(--bg-card)",
+                        border:"2px solid var(--accent)",display:"flex",alignItems:"center",
+                        justifyContent:"center",fontSize:10,flexShrink:0,marginTop:2,zIndex:1 }}>
+                        {ev.icon}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight:600, fontSize:13, color:"var(--text-primary)" }}>{ev.title}</div>
+                        <div className="small" style={{ opacity:0.55, marginTop:2 }}>{ev.time}</div>
+                        {ev.detail && <div className="small" style={{ marginTop:3, opacity:0.8 }}>{ev.detail}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-    </div>
+
+          {/* ── RIGHT SIDEBAR ── */}
+          <div style={{ display:"flex", flexDirection:"column", gap:14, position:"sticky", top:"calc(var(--topnav-height) + 16px)" }}>
+
+            {/* Case Status */}
+            <div className="chart-card">
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                <div className="chart-title">Case Status</div>
+                <CaseStatusSelect value={request?.status||"PENDING"} />
+              </div>
+              {caseId && (
+                <div className="small" style={{ marginBottom:4 }}>
+                  Case # <b style={{ fontFamily:"monospace", fontSize:10 }}>
+                    {String(caseId).slice(0,8).toUpperCase()}-KYC
+                  </b>
+                </div>
+              )}
+              <div className="small" style={{ opacity:0.6, marginBottom:8 }}>
+                Assigned: <b>Alice Martin</b><br/>
+                Last Updated: {fmtDateTime(createdAt)}
+              </div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {decisionLatest ? (
+                  <span className={`badge ${decisionLatest.decision==="PASS"?"badge-ok":"badge-bad"}`}>
+                    {decisionLatest.decision==="PASS"?"✅ PASS":"⛔ BLOCK"}
+                  </span>
+                ) : (
+                  <span className="badge badge-warn">⏳ En attente</span>
+                )}
+                {risk && (
+                  <span style={{ padding:"3px 10px",borderRadius:20,background:rc.bg,color:rc.text,fontSize:11,fontWeight:700 }}>
+                    {rc.label}
+                  </span>
+                )}
+              </div>
+              {confidence != null && (
+                <div style={{ marginTop:10 }}>
+                  <div className="small" style={{ marginBottom:4, opacity:0.6 }}>Confiance : {confidence}%</div>
+                  <div style={{ height:5, background:"rgba(255,255,255,0.08)", borderRadius:3 }}>
+                    <div style={{ height:"100%", borderRadius:3, width:`${Math.min(Number(confidence),100)}%`,
+                      background:Number(confidence)>=70?"#2ECC8F":"#F5920A" }} />
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop:12, display:"grid", gap:6 }}>
+                <Link to={`/screenings/${id}`} className="btn secondary sm" style={{ justifyContent:"center", textAlign:"center" }}>
+                  Voir dans l'historique
+                </Link>
+                <button className="btn sm" onClick={()=>downloadScreeningExportPdf(String(request?.id??id))}
+                  disabled={!request?.id&&!id} style={{ justifyContent:"center" }}>
+                  ⬇️ Export PDF
+                </button>
+              </div>
+            </div>
+
+            {/* Alerts Overview */}
+            <div className="chart-card">
+              <div className="chart-title" style={{ marginBottom:12 }}>Alerts Overview</div>
+              {[
+                { label:"High Risk Alerts:", color:"#E84040", val:highRiskMatches },
+                { label:"Associated Entities:", color:"#E84040", val:assocEntities },
+                { label:"PEP Matches:", color:"#2ECC8F", val:pepMatches },
+              ].map((row,i)=>(
+                <div key={i} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",
+                  padding:"8px 0",borderBottom:"1px solid var(--border)" }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                    <div style={{ width:10,height:10,borderRadius:2,background:row.color,flexShrink:0 }}/>
+                    <span className="small" style={{ color:"var(--text-secondary)" }}>{row.label}</span>
+                  </div>
+                  <b style={{ color:row.color,fontSize:16 }}>{row.val}</b>
+                </div>
+              ))}
+            </div>
+
+            {/* Case Notes */}
+            <div className="chart-card">
+              <div className="chart-title" style={{ marginBottom:12 }}>Case Notes</div>
+              <div style={{ display:"flex",gap:8,marginBottom:10 }}>
+                <input className="input" style={{ flex:1,fontSize:12,padding:"6px 10px" }}
+                  placeholder="Add a note…" value={noteText}
+                  onChange={e=>setNoteText(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&addNote()} />
+                <button className="btn sm" onClick={addNote} disabled={!noteText.trim()} style={{padding:"6px 12px"}}>+</button>
+              </div>
+              {notes.length===0 ? (
+                <div className="small" style={{ opacity:0.4 }}>Aucune note. Ajoutez la première.</div>
+              ) : notes.map((n,i)=>(
+                <div key={i} style={{ padding:"8px 0",borderBottom:"1px solid var(--border)" }}>
+                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:2 }}>
+                    <b style={{ fontSize:12 }}>{n.user}</b>
+                    <span className="small" style={{ opacity:0.5 }}>{n.time}</span>
+                  </div>
+                  <div className="small">{n.text}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      )}
+    </>
   );
 }
