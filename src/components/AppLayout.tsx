@@ -135,7 +135,7 @@ export default function AppLayout() {
         <Link to="/dashboard" className="sidebar-logo">
           <div className="sidebar-logo-icon">🛡️</div>
           <div className="sidebar-logo-text">
-            AML Screening
+            Simandou Screening
             <span>Compliance Platform</span>
           </div>
         </Link>
