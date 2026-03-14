@@ -1,7 +1,7 @@
 // src/pages/AnalystHome.tsx — High-product screening flow UI
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
+import api, {
   launchSimpleScreening,
   uploadDocumentStandalone,
   extractOcr,
@@ -9,7 +9,9 @@ import {
   downloadScreeningExportPdf,
   setScreeningDecision,
   getScreeningDetails,
+  getDocumentStatus
 } from "../api";
+
 import type { SimpleScreeningIn } from "../api";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -229,6 +231,8 @@ export default function AnalystHome() {
     return !!companyName.trim();
   },[entityType,firstName,lastName,companyName]);
 
+
+  
   // Cleanup preview URL
   useEffect(()=>{
     return ()=>{ if(docPreview) URL.revokeObjectURL(docPreview); };
@@ -321,19 +325,57 @@ export default function AnalystHome() {
   }
 
   async function runOcr() {
-    if(!documentId) return;
-    setBusy(true); setErr(null);
-    try {
-      const res: any = await extractOcr(documentId);
-      setOcrFields(res.extracted_fields || {});
-      const fn = (res.extracted_fields?.first_name||"").trim();
-      const ln = (res.extracted_fields?.last_name||"").trim();
-      setOverrideName([fn,ln].filter(Boolean).join(" ").trim());
-      setDocStep("confirm");
-    } catch(e:any) {
-      setErr(e?.response?.data?.detail||e?.message||"OCR échoué");
-    } finally { setBusy(false); }
+  if (!documentId) return;
+  setBusy(true); setErr(null);
+  try {
+    // 1) Lance l'extraction (répond immédiatement PENDING)
+    await extractOcr(documentId);
+
+    // 2) Polling — interroge GET /documents/cases/{case_id}
+    // Mais on n'a pas le case_id ici → on utilise getScreeningDetails non,
+    // on appelle directement GET /documents/{doc_id}/status via api
+    const MAX_ATTEMPTS = 20;
+    const INTERVAL_MS  = 1500;
+    let extracted: any = null;
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await new Promise(r => setTimeout(r, INTERVAL_MS));
+
+      try {
+        // GET /documents/{doc_id}/extract-status — ou on reuse l'endpoint existant
+        const { data } = await api.get(`/documents/${documentId}/status`);
+        const status = data?.ocr_status as string;
+
+        if (status === "DONE" || status === "LOW_CONFIDENCE") {
+          extracted = data?.extracted_fields || {};
+          break;
+        }
+        if (status === "FAILED") {
+          throw new Error("OCR échoué côté serveur");
+        }
+        // PENDING → on continue
+      } catch (pollErr: any) {
+        // Si l'endpoint /status n'existe pas, fallback sur les détails du doc
+        break;
+      }
+    }
+
+    if (!extracted) {
+      throw new Error("OCR timeout — réessayez dans quelques secondes");
+    }
+
+    setOcrFields(extracted);
+    const fn = (extracted.first_name || "").trim();
+    const ln = (extracted.last_name  || "").trim();
+    setOverrideName([fn, ln].filter(Boolean).join(" ").trim());
+    setDocStep("confirm");
+
+  } catch (e: any) {
+    setErr(e?.response?.data?.detail || e?.message || "OCR échoué");
+  } finally {
+    setBusy(false);
   }
+}
 
   async function launchFromDoc() {
     if(!documentId || !overrideName.trim()) return;

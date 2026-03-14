@@ -329,6 +329,15 @@ export async function getCaseDocuments(caseId: string): Promise<any[]> {
   return Array.isArray(data) ? data : [];
 }
 
+export async function getDocumentStatus(documentId: string) {
+  const { data } = await api.get(`/documents/${documentId}/status`);
+  return data as {
+    doc_id:          string;
+    ocr_status:      string;
+    ocr_confidence:  number | null;
+    extracted_fields: Record<string, string> | null;
+  };
+}
 // ─────────────────────────────────────────────
 // Export PDF  →  GET /screening/{id}/export.pdf
 // ─────────────────────────────────────────────
