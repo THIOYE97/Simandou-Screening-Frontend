@@ -734,7 +734,7 @@ export default function ScreeningDetails() {
                 </div>
               )}
               <div className="small" style={{ opacity:0.6, marginBottom:8 }}>
-                Assigned: <b>Alice Martin</b><br/>
+                Assigned: <b>Mode Testeur</b><br/>
                 Last Updated: {fmtDateTime(createdAt)}
               </div>
               <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>

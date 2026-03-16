@@ -3,6 +3,7 @@ import { Link, useLocation, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { getToken, clearToken } from "../auth";
 import { getDashboardStats, listCases } from "../api";
+import logo from "../assets/simandou_screening_logo1.png";
 
 function getPayload(): any | null {
   const t = getToken();
@@ -39,27 +40,28 @@ function getInitials(name?: string): string {
     .slice(0, 2);
 }
 
-function getPageMeta(pathname: string): { kicker: string; title: string } {
+function getPageMeta(pathname: string) {
+
   if (pathname === "/dashboard")
-    return { kicker: "Overview", title: "Dashboard" };
+    return { kicker: "Vue globale", title: "Tableau de bord" };
 
   if (pathname === "/analyst")
-    return { kicker: "AML / PEP", title: "New Screening" };
+    return { kicker: "AML / PEP", title: "Nouveau screening" };
 
   if (pathname.startsWith("/screenings"))
-    return { kicker: "AML / PEP", title: "Screenings History" };
+    return { kicker: "AML / PEP", title: "Historique des screenings" };
 
   if (pathname.startsWith("/cases"))
-    return { kicker: "Investigation", title: "Case Management" };
+    return { kicker: "Investigation", title: "Gestion des dossiers" };
 
   if (pathname === "/watchlists")
-    return { kicker: "Surveillance", title: "Watchlists" };
+    return { kicker: "Surveillance", title: "Listes de surveillance" };
 
   if (pathname === "/reports")
-    return { kicker: "Analytics", title: "Reports" };
+    return { kicker: "Analyse", title: "Rapports" };
 
   if (pathname === "/settings")
-    return { kicker: "Configuration", title: "Settings" };
+    return { kicker: "Configuration", title: "Paramètres" };
 
   return { kicker: "", title: "Console" };
 }
@@ -69,24 +71,44 @@ export default function AppLayout() {
   const navigate = useNavigate();
 
   const payload = getPayload();
-
-  const userEmail: string = payload?.sub ?? payload?.email ?? "admin";
-  const role: string = payload?.role ?? "ANALYST";
-
-  const userName = userEmail.split("@")[0].replace(/[._-]/g, " ");
+  const userEmail = getUserEmail(payload);
+  const userName = userEmail.split("@")[0];
 
   const { kicker, title } = getPageMeta(location.pathname);
 
   const [pendingScreenings, setPendingScreenings] = useState(0);
   const [openCases, setOpenCases] = useState(0);
+  const [alerts, setAlerts] = useState(0);
+  const [theme, setTheme] = useState(
+  localStorage.getItem("theme") || "dark"
+);
+useEffect(() => {
+  document.body.setAttribute("data-theme", theme);
+  localStorage.setItem("theme", theme);
+}, [theme]);
 
+function toggleTheme(){
+  setTheme(theme === "dark" ? "light" : "dark");
+}
+
+function getUserEmail(payload:any):string{
+  if(!payload) return "admin@local";
+
+  return (
+    payload.email ||
+    payload.preferred_username ||
+    payload.username ||
+    payload.sub ||
+    "admin@local"
+  );
+}
   // Load dynamic stats
   useEffect(() => {
     async function load() {
       try {
         const stats = await getDashboardStats();
         const cases = await listCases();
-
+        setAlerts(stats.pending + stats.high_risk + stats.medium_risk);
         setPendingScreenings(stats.pending);
         setOpenCases(
           cases.filter((c) => c.status !== "CLOSED").length
@@ -100,28 +122,27 @@ export default function AppLayout() {
   }, [location.pathname]);
 
   const NAV_ITEMS: NavItem[] = [
-    { to: "/dashboard", label: "Dashboard", icon: "🏠", exact: true },
+  { to: "/dashboard", label: "Tableau de bord", icon: "🏠", exact: true },
+  { to: "/analyst", label: "Nouveau Screening", icon: "🔍" },
 
-    { to: "/analyst", label: "New Screening", icon: "🔍" },
+  {
+    to: "/screenings",
+    label: "Screenings",
+    icon: "📋",
+    badge: pendingScreenings || undefined,
+  },
 
-    {
-      to: "/screenings",
-      label: "Screenings",
-      icon: "📋",
-      badge: pendingScreenings || undefined,
-    },
+  {
+    to: "/cases",
+    label: "Dossiers",
+    icon: "📁",
+    badge: openCases || undefined,
+  },
 
-    {
-      to: "/cases",
-      label: "Cases",
-      icon: "📁",
-      badge: openCases || undefined,
-    },
+  { to: "/watchlists", label: "Listes de surveillance", icon: "📡" },
 
-    { to: "/watchlists", label: "Watchlists", icon: "📡" },
-
-    { to: "/reports", label: "Reports", icon: "📊" },
-  ];
+  { to: "/reports", label: "Rapports", icon: "📊" },
+];
 
   function logout() {
     clearToken();
@@ -133,7 +154,9 @@ export default function AppLayout() {
       {/* Sidebar */}
       <aside className="app-sidebar">
         <Link to="/dashboard" className="sidebar-logo">
-          <div className="sidebar-logo-icon">🛡️</div>
+          <div className="sidebar-logo-icon">
+  <img src={logo} alt="Simandou Screening" />
+</div>
           <div className="sidebar-logo-text">
             Simandou Screening
             <span>Compliance Platform</span>
@@ -185,8 +208,7 @@ export default function AppLayout() {
             >
               {userName}
             </div>
-
-            <div className="sidebar-user-role">{role}</div>
+            
           </div>
         </div>
       </aside>
@@ -211,34 +233,38 @@ export default function AppLayout() {
 
           <div className="topnav-search">
             <span className="topnav-search-icon">🔍</span>
-            <input placeholder="Search case, screening or client..." />
+            <input placeholder="Rechercher un dossier, screening ou client..." />
           </div>
 
           <div className="topnav-spacer" />
 
           <div className="topnav-actions">
             {/* notifications */}
-            <button className="topnav-icon-btn" title="Pending screenings">
-              🔔
-              {pendingScreenings > 0 && (
-                <span className="topnav-notif-badge">
-                  {pendingScreenings}
-                </span>
-              )}
-            </button>
+            <button className="topnav-icon-btn" title="Alertes système">
+  🔔
+  {alerts > 0 && (
+    <span className="topnav-notif-badge">
+      {alerts}
+    </span>
+  )}
+</button>
 
             <div className="topnav-user">
               <div className="topnav-user-avatar">
-                {getInitials(userName)}
+                {getInitials(userEmail)}
               </div>
 
-              <span
-                className="topnav-user-name"
-                style={{ textTransform: "capitalize" }}
-              >
-                {userName}
-              </span>
+              <span className="topnav-user-name">
+  {userEmail}
+</span>
             </div>
+            <button
+  onClick={toggleTheme}
+  className="topnav-icon-btn"
+  title="Mode clair / sombre"
+>
+  {theme === "dark" ? "🌙" : "☀️"}
+</button>
 
             <Link
               to="/settings"
@@ -250,12 +276,11 @@ export default function AppLayout() {
 
             {/* Logout */}
             <button
-              onClick={logout}
-              className="topnav-icon-btn"
-              title="Logout"
-            >
-              🚪
-            </button>
+  onClick={logout}
+  className="topnav-logout-btn"
+>
+  ⎋ Déconnexion
+</button>
           </div>
         </header>
 

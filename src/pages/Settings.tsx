@@ -211,9 +211,9 @@ function AlertsTab() {
 // User Management Tab
 // ─────────────────────────────────────────────
 const USERS = [
-  { name: "Alice Martin",   email: "alice@company.com",   role: "Admin",   activity: "1 hour ago" },
-  { name: "Michel Dubois",  email: "michel@company.com",  role: "Analyst", activity: "2 hours ago" },
-  { name: "Amira Lefevre",  email: "amira@company.com",   role: "Analyst", activity: "30 min ago" },
+  { name: " ",   email: "@company.com",   role: "Admin",   activity: "1 hour ago" },
+  { name: " ",  email: "@company.com",  role: "Analyst", activity: "2 hours ago" },
+  { name: " ",  email: "@company.com",   role: "Analyst", activity: "30 min ago" },
 ];
 
 function UserManagementTab() {
@@ -279,12 +279,12 @@ function UserManagementTab() {
 // Audit Logs Tab
 // ─────────────────────────────────────────────
 const AUDIT_ENTRIES = [
-  { at: "2024-05-01 14:32", user: "Alice Martin",  action: "Screening lancé",         detail: "Jean Dupont — High Risk" },
-  { at: "2024-05-01 13:15", user: "Michel Dubois", action: "Décision: PASS",           detail: "Maria Ivanova — commentaire: Faux positif vérifié" },
-  { at: "2024-05-01 12:02", user: "Amira Lefevre", action: "Screening lancé",          detail: "Ahmed Al-Farsi — Medium Risk" },
-  { at: "2024-04-30 16:40", user: "Alice Martin",  action: "Paramètres modifiés",      detail: "PEP Monitoring activé" },
-  { at: "2024-04-30 09:11", user: "Michel Dubois", action: "Décision: BLOCK",          detail: "Robert Chen — commentaire: Correspondance confirmée sur liste OFAC" },
-  { at: "2024-04-29 17:23", user: "Amira Lefevre", action: "Utilisateur invité",       detail: "louis.morel@company.com — Analyst" },
+  { at: "2024-05-01 14:32", user: "",  action: "Screening lancé",         detail: " — High Risk" },
+  { at: "2024-05-01 13:15", user: "", action: "Décision: PASS",           detail: " — commentaire: Faux positif vérifié" },
+  { at: "2024-05-01 12:02", user: "", action: "Screening lancé",          detail: " — Medium Risk" },
+  { at: "2024-04-30 16:40", user: "",  action: "Paramètres modifiés",      detail: "PEP Monitoring activé" },
+  { at: "2024-04-30 09:11", user: "", action: "Décision: BLOCK",          detail: " — commentaire: Correspondance confirmée sur liste OFAC" },
+  { at: "2024-04-29 17:23", user: " ", action: "Utilisateur invité",       detail: "@company.com — Analyst" },
 ];
 
 function AuditLogsTab() {

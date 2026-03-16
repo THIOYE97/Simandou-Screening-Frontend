@@ -485,12 +485,12 @@ export default function AnalystHome() {
                         <div className="field">
                           <label className="small">Prénoms <span style={{color:"#E84040"}}>*</span></label>
                           <input className="input" value={firstName} onChange={e=>setFirstName(e.target.value)}
-                            placeholder="Ex: Jean" autoFocus onKeyDown={e=>e.key==="Enter"&&canLaunchSimple&&launchSimple()} />
+                            placeholder="Ex: Moussa" autoFocus onKeyDown={e=>e.key==="Enter"&&canLaunchSimple&&launchSimple()} />
                         </div>
                         <div className="field">
                           <label className="small">Nom <span style={{color:"#E84040"}}>*</span></label>
                           <input className="input" value={lastName} onChange={e=>setLastName(e.target.value)}
-                            placeholder="Ex: Dupont" onKeyDown={e=>e.key==="Enter"&&canLaunchSimple&&launchSimple()} />
+                            placeholder="Ex: Diane" onKeyDown={e=>e.key==="Enter"&&canLaunchSimple&&launchSimple()} />
                         </div>
                         <div className="field">
                           <label className="small">Date de naissance</label>
@@ -500,14 +500,14 @@ export default function AnalystHome() {
                         <div className="field">
                           <label className="small">Nationalité</label>
                           <input className="input" value={nationality} onChange={e=>setNationality(e.target.value)}
-                            placeholder="Ex: FR, US, SN…" />
+                            placeholder="Ex: ML, GN, RCI" />
                         </div>
                       </>
                     ) : (
                       <div className="field span-2">
                         <label className="small">Nom de l'entreprise <span style={{color:"#E84040"}}>*</span></label>
                         <input className="input" value={companyName} onChange={e=>setCompanyName(e.target.value)}
-                          placeholder="Ex: Acme Corp" autoFocus onKeyDown={e=>e.key==="Enter"&&canLaunchSimple&&launchSimple()} />
+                          placeholder="Ex: SONATEL" autoFocus onKeyDown={e=>e.key==="Enter"&&canLaunchSimple&&launchSimple()} />
                       </div>
                     )}
                     <div className="field">
