@@ -634,7 +634,7 @@ export default function ScreeningDetails() {
 
                 {/* Debug */}
                 <details style={{ marginTop:16 }}>
-                  <summary className="badge" style={{ cursor:"pointer" }}>🔧 Debug (raw data)</summary>
+                  <summary className="badge" style={{ cursor:"pointer" }}></summary>
                   <textarea readOnly style={{ marginTop:8, minHeight:200, fontFamily:"monospace", fontSize:11 }}
                     value={JSON.stringify(data, null, 2)} />
                 </details>
@@ -734,7 +734,7 @@ export default function ScreeningDetails() {
                 </div>
               )}
               <div className="small" style={{ opacity:0.6, marginBottom:8 }}>
-                Assigned: <b>Mode Testeur</b><br/>
+                Assigned: <b></b><br/>
                 Last Updated: {fmtDateTime(createdAt)}
               </div>
               <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>

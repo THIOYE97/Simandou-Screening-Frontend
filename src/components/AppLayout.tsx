@@ -231,32 +231,19 @@ function getUserEmail(payload:any):string{
             </div>
           </div>
 
-          <div className="topnav-search">
-            <span className="topnav-search-icon">🔍</span>
-            <input placeholder="Rechercher un dossier, screening ou client..." />
-          </div>
+          
 
           <div className="topnav-spacer" />
 
           <div className="topnav-actions">
-            {/* notifications */}
-            <button className="topnav-icon-btn" title="Alertes système">
-  🔔
-  {alerts > 0 && (
-    <span className="topnav-notif-badge">
-      {alerts}
-    </span>
-  )}
-</button>
+            
 
             <div className="topnav-user">
-              <div className="topnav-user-avatar">
-                {getInitials(userEmail)}
+              <div className="">
+              
               </div>
 
-              <span className="topnav-user-name">
-  {userEmail}
-</span>
+         
             </div>
             <button
   onClick={toggleTheme}

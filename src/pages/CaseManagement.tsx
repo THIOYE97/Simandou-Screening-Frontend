@@ -27,7 +27,7 @@ interface EnrichedCase {
 }
 
 const PAGE_SIZE = 10;
-const ANALYSTS  = ["Alice Martin", "Michel Dubois", "Amira Lefevre", "Louis Morel", "Sarah Bernard"];
+const ANALYSTS  = [""];
 
 // ─────────────────────────────────────────────
 // Status mapping

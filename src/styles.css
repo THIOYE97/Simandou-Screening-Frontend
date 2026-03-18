@@ -7,14 +7,14 @@
 
 /* ── Variables ── */
 :root {
-  --bg-base:        #0A1628;
-  --bg-sidebar:     #0D1E35;
+  --bg-base:        #0E1B2E;
+  --bg-sidebar:     #12243C;
   --bg-sidebar-hover: rgba(45,127,214,0.12);
-  --bg-card:        #0F2040;
-  --bg-card-2:      #112444;
-  --bg-card-hover:  #162A52;
-  --bg-input:       rgba(255,255,255,0.05);
-  --bg-overlay:     rgba(7,14,30,0.85);
+  --bg-card:        #142844;
+  --bg-card-2:      #172E4D;
+  --bg-card-hover:  #1A3355;
+  --bg-input:       rgba(255,255,255,0.06);
+  --bg-overlay:     rgba(10,18,35,0.75);
 
   --border:         rgba(255,255,255,0.07);
   --border-active:  rgba(45,127,214,0.5);
@@ -1565,19 +1565,29 @@ input[type="checkbox"]:checked::after {
 }
 body[data-theme="light"] {
 
-  --bg-base:#F4F7FB;
-  --bg-card:#FFFFFF;
-  --bg-card-2:#F1F5FB;
-  --bg-input:#F0F3F8;
+  --bg-base:#F5F7FA;
+  --bg-card:#FBFCFE;
+  --bg-card-2:#F2F6FA;
+  --bg-input:#EEF2F7;
 
-  --text-primary:#1A2B45;
-  --text-secondary:#4A5B75;
-  --text-muted:#7A889F;
+  --text-primary:#1F2A3A;
+  --text-secondary:#55637A;
+  --text-muted:#8895AA;
 
-  --border:rgba(0,0,0,0.08);
-  --border-light:rgba(0,0,0,0.1);
+  --border:rgba(0,0,0,0.06);
+  --border-light:rgba(0,0,0,0.08);
 
 }
 body[data-theme="light"] .app-sidebar{
-  background:#0D1E35;
+  background: #F5F7FA;
+  border-right: 1px solid var(--border);
+}
+
+body[data-theme="light"] .page,
+body[data-theme="light"] .app-content {
+  background: linear-gradient(
+    180deg,
+    #F5F7FA 0%,
+    #F5F7FA 100%
+  );
 }
