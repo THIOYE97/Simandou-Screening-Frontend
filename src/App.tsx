@@ -10,7 +10,6 @@ import AnalystHome      from "./pages/AnalystHome";
 import ScreeningsList   from "./pages/ScreeningsList";
 import ScreeningDetails from "./pages/ScreeningDetails";
 import CaseManagement   from "./pages/CaseManagement";
-import Settings         from "./pages/Settings";
 import Watchlists       from "./pages/Watchlists";
 import Reports          from "./pages/Reports";
 
@@ -29,7 +28,6 @@ export default function App() {
           <Route path="/screenings"     element={<ScreeningsList />} />
           <Route path="/screenings/:id" element={<ScreeningDetails />} />
           <Route path="/cases"          element={<CaseManagement />} />
-          <Route path="/settings"       element={<Settings />} />
           <Route path="/watchlists"     element={<Watchlists />} />
           <Route path="/reports"        element={<Reports />} />
 
