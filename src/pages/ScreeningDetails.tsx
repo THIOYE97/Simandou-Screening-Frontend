@@ -13,7 +13,6 @@ import {
   Flag,
   FolderOpen,
   Link as LinkIcon,
-  MoreHorizontal,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -543,7 +542,6 @@ export default function ScreeningDetails() {
   const rc = riskColor(risk);
   const RiskIcon = rc.icon;
   const ac = actionStyle(result?.recommended_action);
-  const ActionIcon = ac.icon;
   const createdAt = request?.created_at ?? null;
   const caseId = request?.case_id ?? payload?.case_id ?? null;
   const confidence = result?.confidence ?? null;
@@ -694,24 +692,13 @@ export default function ScreeningDetails() {
                         {rc.label}
                       </span>
                     )}
-                    <button className="btn secondary sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <MoreHorizontal size={14} />
-                      More…
-                    </button>
+                    
                   </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", flexShrink: 0 }}>
-                  <button className="btn secondary sm" onClick={() => doDecision("PASS")} disabled={decBusy} title="Marquer comme faux positif">
-                    False Positive
-                  </button>
-                  <button className="btn secondary sm" title="Rejeter la correspondance">
-                    Dismiss Match
-                  </button>
-                  <button className="btn secondary sm">Create Case</button>
-                  <button className="btn sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    Assign <ChevronDown size={13} />
-                  </button>
+                  
+                
                 </div>
               </div>
 

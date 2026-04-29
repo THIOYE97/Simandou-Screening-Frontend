@@ -73,11 +73,12 @@ export async function login(email: string, password: string) {
 // Types
 // ─────────────────────────────────────────────
 export interface ScreeningListParams {
-  limit?:  number;
-  offset?: number;
-  status?: string;
-  name?:   string;
-  kind?:   string;
+  limit?:      number;
+  offset?:     number;
+  status?:     string;
+  name?:       string;
+  kind?:       string;
+  risk_level?: string;
 }
 
 export interface ScreeningListItem {
@@ -182,6 +183,16 @@ export async function listScreenings(params: ScreeningListParams = {}): Promise<
   if (Array.isArray(data)) return { items: data, total: data.length, limit: params.limit ?? 50, offset: params.offset ?? 0 };
   return data as ScreeningListResp;
 }
+
+export async function exportScreeningsCsv(params: ScreeningListParams = {}): Promise<Blob> {
+  const { data } = await api.get("/analyst/screenings/export.csv", {
+    params,
+    responseType: "blob",
+  });
+
+  return data as Blob;
+}
+
 
 export async function getScreeningDetails(requestId: string): Promise<any> {
   const { data } = await api.get(`/analyst/screenings/${requestId}`);

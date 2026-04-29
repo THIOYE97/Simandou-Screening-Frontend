@@ -13,7 +13,7 @@ import {
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
-import { listScreenings } from "../api";
+import { exportScreeningsCsv, listScreenings } from "../api";
 import type { ScreeningListItem } from "../api";
 
 const PAGE_SIZE = 20;
@@ -185,7 +185,8 @@ function AlertsOverview({ items }: { items: ScreeningListItem[] }) {
 export default function ScreeningsList() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+const [err, setErr] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [all, setAll] = useState<ScreeningListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [searchName, setSearchName] = useState("");
@@ -198,7 +199,13 @@ export default function ScreeningsList() {
     setBusy(true);
     setErr(null);
     try {
-      const params = { limit: FETCH_MAX, offset: 0, status: filterStatus.trim() || undefined };
+      const params = {
+  limit: FETCH_MAX,
+  offset: 0,
+  status: filterStatus.trim() || undefined,
+  risk_level: filterRisk.trim() || undefined,
+  name: searchName.trim() || undefined,
+};
       const first = await listScreenings(params);
       const items = Array.isArray(first) ? first : (first?.items ?? []);
       const svtotal = typeof (first as any)?.total === "number" ? (first as any).total : items.length;
@@ -235,9 +242,9 @@ export default function ScreeningsList() {
     }
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+ useEffect(() => {
+  load();
+}, [filterStatus, filterRisk]);
 
   const filtered = useMemo(() => {
     const n = norm(searchName);
@@ -261,7 +268,47 @@ export default function ScreeningsList() {
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  
+async function handleExportReport() {
+  setExporting(true);
+  setErr(null);
 
+  try {
+    const params = {
+      status: filterStatus.trim() || undefined,
+      risk_level: filterRisk.trim() || undefined,
+      name: searchName.trim() || undefined,
+    };
+
+    const blob = await exportScreeningsCsv(params);
+
+    const downloadUrl = window.URL.createObjectURL(blob);
+
+    const now = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const riskPart = filterRisk ? filterRisk.toLowerCase() : "all";
+    const statusPart = filterStatus ? filterStatus.toLowerCase() : "all";
+
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = `screenings_${riskPart}_${statusPart}_${now}.csv`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(downloadUrl);
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail;
+
+    setErr(
+      typeof detail === "string"
+        ? detail
+        : e?.message || "Erreur pendant l’export du rapport."
+    );
+  } finally {
+    setExporting(false);
+  }
+}
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const n = new Set(prev);
@@ -408,10 +455,9 @@ export default function ScreeningsList() {
                   <button
                     key={s || "all"}
                     onClick={() => {
-                      setFilterStatus(s);
-                      setTimeout(load, 0);
-                      setPage(1);
-                    }}
+  setFilterStatus(s);
+  setPage(1);
+}}
                     style={{
                       padding: "4px 12px",
                       borderRadius: 20,
@@ -451,12 +497,14 @@ export default function ScreeningsList() {
                   Clear Filters
                 </button>
                 <button
-                  className="btn sm"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-                >
-                  <Download size={14} strokeWidth={2.2} />
-                  Export Report
-                </button>
+  className="btn sm"
+  onClick={handleExportReport}
+  disabled={exporting || busy}
+  style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+>
+  <Download size={14} strokeWidth={2.2} />
+  {exporting ? "Exporting..." : "Export Report"}
+</button>
               </div>
             </div>
           </div>
