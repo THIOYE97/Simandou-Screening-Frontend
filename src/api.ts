@@ -79,6 +79,11 @@ export interface ScreeningListParams {
   name?:       string;
   kind?:       string;
   risk_level?: string;
+  provider?:   string;
+  date?:       string; // YYYY-MM-DD
+  hour?:       number; // 0-23
+  date_from?:  string; // YYYY-MM-DD inclusif
+  date_to?:    string; // YYYY-MM-DD inclusif
 }
 
 export interface ScreeningListItem {

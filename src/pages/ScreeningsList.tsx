@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
+  CalendarRange,
   CheckCircle2,
   ClipboardList,
   Download,
@@ -12,6 +13,7 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import { exportScreeningsCsv, listScreenings } from "../api";
 import type { ScreeningListItem } from "../api";
@@ -195,6 +197,12 @@ const [err, setErr] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
 
+  // ── Export modal (date range picker) ──
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFrom, setExportFrom] = useState("");
+  const [exportTo, setExportTo] = useState("");
+  const [exportError, setExportError] = useState<string | null>(null);
+
   async function load() {
     setBusy(true);
     setErr(null);
@@ -269,7 +277,30 @@ const [err, setErr] = useState<string | null>(null);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   
+function openExportModal() {
+  setExportError(null);
+  setExportFrom("");
+  setExportTo("");
+  setShowExportModal(true);
+}
+
+function closeExportModal() {
+  if (exporting) return;
+  setShowExportModal(false);
+  setExportError(null);
+}
+
 async function handleExportReport() {
+  setExportError(null);
+
+  const from = exportFrom.trim();
+  const to = exportTo.trim();
+
+  if (from && to && from > to) {
+    setExportError("La date de début doit être antérieure ou égale à la date de fin.");
+    return;
+  }
+
   setExporting(true);
   setErr(null);
 
@@ -278,6 +309,8 @@ async function handleExportReport() {
       status: filterStatus.trim() || undefined,
       risk_level: filterRisk.trim() || undefined,
       name: searchName.trim() || undefined,
+      date_from: from || undefined,
+      date_to: to || undefined,
     };
 
     const blob = await exportScreeningsCsv(params);
@@ -287,24 +320,29 @@ async function handleExportReport() {
     const now = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const riskPart = filterRisk ? filterRisk.toLowerCase() : "all";
     const statusPart = filterStatus ? filterStatus.toLowerCase() : "all";
+    const rangePart = from || to ? `_${from || "any"}_to_${to || "any"}` : "";
 
     const a = document.createElement("a");
     a.href = downloadUrl;
-    a.download = `screenings_${riskPart}_${statusPart}_${now}.csv`;
+    a.download = `screenings_${riskPart}_${statusPart}${rangePart}_${now}.csv`;
 
     document.body.appendChild(a);
     a.click();
     a.remove();
 
     window.URL.revokeObjectURL(downloadUrl);
+
+    setShowExportModal(false);
   } catch (e: any) {
     const detail = e?.response?.data?.detail;
 
-    setErr(
+    const msg =
       typeof detail === "string"
         ? detail
-        : e?.message || "Erreur pendant l’export du rapport."
-    );
+        : e?.message || "Erreur pendant l’export du rapport.";
+
+    setExportError(msg);
+    setErr(msg);
   } finally {
     setExporting(false);
   }
@@ -498,7 +536,7 @@ async function handleExportReport() {
                 </button>
                 <button
   className="btn sm"
-  onClick={handleExportReport}
+  onClick={openExportModal}
   disabled={exporting || busy}
   style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
 >
@@ -671,6 +709,134 @@ async function handleExportReport() {
 
         <AlertsOverview items={filtered} />
       </div>
+
+      {showExportModal && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeExportModal();
+          }}
+        >
+          <div className="modal" style={{ maxWidth: 480 }}>
+            <div className="modal-head">
+              <div>
+                <div className="modal-kicker">Export CSV</div>
+                <div
+                  className="modal-action"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+                >
+                  <CalendarRange size={18} strokeWidth={2.2} />
+                  Choisir l'intervalle des dates
+                </div>
+                <div
+                  className="small"
+                  style={{ color: "var(--text-muted)", marginTop: 6 }}
+                >
+                  Les filtres actifs (statut, risque, recherche) seront aussi appliqués.
+                  Laissez vide pour ne pas borner.
+                </div>
+              </div>
+              <button
+                className="btn secondary sm"
+                onClick={closeExportModal}
+                disabled={exporting}
+                aria-label="Fermer"
+                style={{ padding: 6 }}
+              >
+                <X size={14} strokeWidth={2.2} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <div
+                    className="small"
+                    style={{
+                      color: "var(--text-muted)",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Du
+                  </div>
+                  <input
+                    type="date"
+                    className="input"
+                    value={exportFrom}
+                    max={exportTo || undefined}
+                    onChange={(e) => setExportFrom(e.target.value)}
+                    disabled={exporting}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+                <div>
+                  <div
+                    className="small"
+                    style={{
+                      color: "var(--text-muted)",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Au
+                  </div>
+                  <input
+                    type="date"
+                    className="input"
+                    value={exportTo}
+                    min={exportFrom || undefined}
+                    onChange={(e) => setExportTo(e.target.value)}
+                    disabled={exporting}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              </div>
+
+              {exportError && (
+                <div
+                  className="toast danger"
+                  style={{
+                    marginTop: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <AlertTriangle size={14} strokeWidth={2.2} />
+                  {exportError}
+                </div>
+              )}
+            </div>
+
+            <div
+              className="modal-footer"
+              style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}
+            >
+              <button
+                className="btn secondary sm"
+                onClick={closeExportModal}
+                disabled={exporting}
+              >
+                Annuler
+              </button>
+              <button
+                className="btn sm"
+                onClick={handleExportReport}
+                disabled={exporting}
+                style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+              >
+                <Download size={14} strokeWidth={2.2} />
+                {exporting ? "Export en cours..." : "Exporter"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
