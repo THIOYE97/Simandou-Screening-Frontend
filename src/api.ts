@@ -233,7 +233,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   // (real risk is in screening_results.risk_level — not in list, so we infer)
   const done    = screenings.filter(s => String(s.status ?? "").toUpperCase() === "DONE").length;
   const pending = screenings.filter(s => ["RUNNING", "PENDING"].includes(String(s.status ?? "").toUpperCase())).length;
-  const failed  = screenings.filter(s => ["FAILED", "ERROR"].includes(String(s.status ?? "").toUpperCase())).length;
 
   // Heuristic risk distribution from cases
   const highRisk   = cases.filter(c => String(c.risk_level ?? "").toUpperCase() === "HIGH").length;
@@ -370,11 +369,282 @@ export function downloadScreeningExportPdf(requestId: string): void {
     .then(blob => {
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `screening-${requestId}.pdf`;
+      a.download = `verification-${requestId.slice(0, 8)}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
     })
     .catch(err => console.error("[downloadPdf]", err));
+}
+
+// Export PDF d'une opération  →  GET /kyt/transactions/{id}/export.pdf
+export function downloadTransactionExportPdf(txnId: string): void {
+  const token = getToken();
+  const url = `${import.meta.env.VITE_API_URL ?? ""}/kyt/transactions/${txnId}/export.pdf`;
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.blob(); })
+    .then(blob => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `operation-${txnId.slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    })
+    .catch(err => console.error("[downloadTxnPdf]", err));
+}
+
+// ═════════════════════════════════════════════
+// LBC/FT — Modules TDR BCRG (référentiel, scoring, alertes, KYT, reporting, RBAC)
+// ═════════════════════════════════════════════
+
+// ─── M1 Référentiel ───────────────────────────
+export interface RiskScenario {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  category: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  criteria: Record<string, any>;
+  risk_weight: number;
+  active: boolean;
+}
+export interface RefCountry {
+  id: string; iso_code: string; name: string;
+  is_high_risk: boolean; is_non_cooperative: boolean; risk_weight: number; active: boolean;
+}
+export async function listScenarios(): Promise<RiskScenario[]> {
+  const { data } = await api.get("/referentiel/scenarios");
+  return data;
+}
+export async function updateScenario(id: string, payload: Partial<RiskScenario>): Promise<RiskScenario> {
+  const { data } = await api.patch(`/referentiel/scenarios/${id}`, payload);
+  return data;
+}
+export async function listRefCountries(): Promise<RefCountry[]> {
+  const { data } = await api.get("/referentiel/countries");
+  return data;
+}
+export async function seedReferentiel(): Promise<any> {
+  const { data } = await api.post("/referentiel/seed");
+  return data;
+}
+
+// ─── M7 Scoring ───────────────────────────────
+export type RiskClass = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export interface Assessment {
+  id: string;
+  subject_type: string;
+  subject_ref?: string | null;
+  subject_label?: string | null;
+  total_score: number;
+  risk_class: RiskClass;
+  triggered: Array<{ code: string; name: string; category: string; severity: string; weight: number }>;
+  context: Record<string, any>;
+  created_at: string;
+}
+export async function evaluateScoring(payload: {
+  subject_type?: string; subject_ref?: string; subject_label?: string; context: Record<string, any>;
+}): Promise<Assessment> {
+  const { data } = await api.post("/scoring/evaluate", payload);
+  return data;
+}
+export async function listAssessments(subject_ref?: string): Promise<Assessment[]> {
+  const { data } = await api.get("/scoring/assessments", { params: { subject_ref, limit: 100 } });
+  return data;
+}
+
+// ─── M6 Alertes ───────────────────────────────
+export type AlertStatus =
+  | "OPEN" | "IN_REVIEW" | "ESCALATED" | "CLOSED_TRUE_POSITIVE" | "CLOSED_FALSE_POSITIVE";
+export interface Alert {
+  id: string;
+  source: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  status: AlertStatus;
+  title: string;
+  rule_code?: string | null;
+  subject_ref?: string | null;
+  subject_label?: string | null;
+  risk_assessment_id?: string | null;
+  detail: Record<string, any>;
+  assigned_to?: string | null;
+  resolution?: string | null;
+  created_at: string;
+}
+export async function listAlerts(params: { status?: string; severity?: string } = {}): Promise<Alert[]> {
+  const { data } = await api.get("/alertes", { params: { ...params, limit: 100 } });
+  return data;
+}
+export async function updateAlertStatus(id: string, status: AlertStatus, resolution?: string): Promise<Alert> {
+  const { data } = await api.patch(`/alertes/${id}/status`, { status, resolution });
+  return data;
+}
+export async function seedAlertRules(): Promise<any> {
+  const { data } = await api.post("/alertes/rules/seed");
+  return data;
+}
+
+// ─── M5 KYT + Déclaration de soupçon ──────────
+export interface Transaction {
+  id: string;
+  external_ref?: string | null;
+  source_system: string;
+  direction: string;
+  channel: string;
+  amount: string | number;
+  currency: string;
+  customer_ref?: string | null;
+  counterparty_name?: string | null;
+  counterparty_country?: string | null;
+  risk_assessment_id?: string | null;
+  risk_class?: string | null;
+  created_at: string;
+}
+export interface IngestResult {
+  transaction: Transaction;
+  risk_class: RiskClass;
+  total_score: number;
+  triggered: Array<{ code: string; name: string; severity: string; weight: number }>;
+  alerts_created: number;
+}
+export async function listTransactions(customer_ref?: string): Promise<Transaction[]> {
+  const { data } = await api.get("/kyt/transactions", { params: { customer_ref, limit: 100 } });
+  return data;
+}
+export async function ingestTransaction(payload: Record<string, any>): Promise<IngestResult> {
+  const { data } = await api.post("/kyt/transactions", payload);
+  return data;
+}
+export interface SAR {
+  id: string;
+  subject_ref?: string | null;
+  subject_label?: string | null;
+  reason: string;
+  narrative?: string | null;
+  status: "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "DECIDED";
+  decision: "PENDING" | "FILED_TO_CENTIF" | "DISMISSED";
+  created_at: string;
+}
+export async function listSars(): Promise<SAR[]> {
+  const { data } = await api.get("/kyt/sar", { params: { limit: 100 } });
+  return data;
+}
+export async function createSar(payload: {
+  subject_ref?: string; subject_label?: string; reason: string; narrative?: string;
+}): Promise<SAR> {
+  const { data } = await api.post("/kyt/sar", payload);
+  return data;
+}
+export async function updateSar(id: string, payload: { status?: string; decision?: string; narrative?: string }): Promise<SAR> {
+  const { data } = await api.patch(`/kyt/sar/${id}`, payload);
+  return data;
+}
+
+// ─── M8 Reportings ────────────────────────────
+export interface ComplianceDashboard {
+  assessments_by_risk_class: Record<string, number>;
+  alerts_by_status: Record<string, number>;
+  alerts_by_severity: Record<string, number>;
+  sars_by_status: Record<string, number>;
+  open_alerts: number;
+  critical_alerts: number;
+  transactions_total: number;
+  sars_pending: number;
+}
+export interface HighRiskSubject {
+  subject_ref?: string | null;
+  subject_label?: string | null;
+  subject_type: string;
+  risk_class: string;
+  total_score: number;
+  scenarios: string[];
+  assessed_at?: string | null;
+}
+export async function getComplianceDashboard(): Promise<ComplianceDashboard> {
+  const { data } = await api.get("/reportings/dashboard");
+  return data;
+}
+export async function getHighRiskSubjects(): Promise<HighRiskSubject[]> {
+  const { data } = await api.get("/reportings/high-risk-subjects");
+  return data;
+}
+export async function downloadHighRiskCsv(): Promise<Blob> {
+  const { data } = await api.get("/reportings/high-risk-subjects.csv", { responseType: "blob" });
+  return data as Blob;
+}
+
+// ─── Devises (référentiel) ────────────────────
+export interface Currency {
+  id: string; code: string; name: string; symbol?: string | null; region?: string | null; active: boolean;
+}
+export async function getCurrencies(activeOnly = true): Promise<Currency[]> {
+  const { data } = await api.get("/referentiel/currencies", { params: { active_only: activeOnly } });
+  return data;
+}
+export async function createCurrency(payload: { code: string; name: string; symbol?: string; region?: string }): Promise<Currency> {
+  const { data } = await api.post("/referentiel/currencies", payload);
+  return data;
+}
+export async function updateCurrency(id: string, payload: Partial<Currency>): Promise<Currency> {
+  const { data } = await api.patch(`/referentiel/currencies/${id}`, payload);
+  return data;
+}
+
+// Événement d'audit de conformité
+export interface ComplianceEvent {
+  id: string; action: string; action_label: string; to_status?: string | null;
+  decision?: string | null; justification?: string | null;
+  subject_kind?: string; subject_id?: string | null; subject_label?: string | null;
+  actor_id?: string | null; created_at?: string | null;
+}
+
+// ─── Détails enrichis (recâblage : mêmes données partout) ──
+export interface AlertDetail extends Alert {
+  subject_decision?: string | null;
+  assigned_to?: string | null;
+  events?: ComplianceEvent[];
+  assessment?: {
+    total_score: number; risk_class: RiskClass;
+    triggered: Array<{ code: string; name: string; category: string; severity: string; weight: number }>;
+    context: Record<string, any>;
+    subject_type?: string; subject_ref?: string | null; subject_label?: string | null; created_at?: string;
+  } | null;
+  transaction?: {
+    id: string; external_ref?: string | null; source_system: string; channel: string;
+    amount: string; currency: string; customer_ref?: string | null;
+    counterparty_name?: string | null; counterparty_country?: string | null;
+    decision?: string | null; created_at?: string;
+  } | null;
+}
+export async function getAlertDetail(id: string): Promise<AlertDetail> {
+  const { data } = await api.get(`/alertes/${id}`);
+  return data;
+}
+export interface TransactionDetail extends Transaction {
+  value_date?: string | null;
+  decision?: string | null;
+  events?: ComplianceEvent[];
+  assessment?: { total_score: number; risk_class: RiskClass; triggered: Array<{ code: string; name: string; severity: string; weight: number }>; context: Record<string, any> } | null;
+}
+export async function getTransactionDetail(id: string): Promise<TransactionDetail> {
+  const { data } = await api.get(`/kyt/transactions/${id}`);
+  return data;
+}
+export async function getComplianceEvents(subjectId: string): Promise<ComplianceEvent[]> {
+  const { data } = await api.get(`/alertes/events`, { params: { subject_id: subjectId } });
+  return data;
+}
+
+// ─── M2 RBAC ──────────────────────────────────
+export interface MyPermissions {
+  user_id: string;
+  is_super_admin: boolean;
+  roles: string[];
+  permissions: string[];
+}
+export async function getMyPermissions(): Promise<MyPermissions> {
+  const { data } = await api.get("/rbac/me/permissions");
+  return data;
 }
 
 export default api;

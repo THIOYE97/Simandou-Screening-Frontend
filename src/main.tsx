@@ -5,12 +5,16 @@ import { BrowserRouter } from "react-router-dom";
 import { SettingsProvider } from "./SettingsContext";
 import App from "./App";
 import "./styles.css";
+import "./ui/theme.css";
+import { UIProvider } from "./ui";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <SettingsProvider>
-        <App />
+        <UIProvider>
+          <App />
+        </UIProvider>
       </SettingsProvider>
     </BrowserRouter>
   </StrictMode>

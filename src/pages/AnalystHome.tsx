@@ -37,7 +37,6 @@ import api, {
   extractOcr,
   screeningFromDocument,
   downloadScreeningExportPdf,
-  setScreeningDecision,
   getScreeningDetails,
 } from "../api";
 
@@ -194,29 +193,15 @@ function ProcessingDot() {
 function ResultCard({
   result,
   onReset,
-  onDecision,
 }: {
   result: ScreeningResult;
   onReset: () => void;
-  onDecision: (d: "PASS" | "BLOCK", comment: string) => Promise<void>;
 }) {
   const navigate = useNavigate();
   const rc = riskConfig(result.risk_level);
   const ac = actionConfig(result.recommended_action);
   const RiskIcon = rc.icon;
   const ActionIcon = ac.icon;
-
-  const [comment, setComment] = useState("");
-  const [decBusy, setDecBusy] = useState(false);
-  const [decDone, setDecDone] = useState<string | null>(null);
-
-  async function decide(d: "PASS" | "BLOCK") {
-    if (comment.trim().length < 4) return;
-    setDecBusy(true);
-    await onDecision(d, comment.trim());
-    setDecDone(d);
-    setDecBusy(false);
-  }
 
   return (
     <div style={{ animation: "fadeIn 0.4s ease" }}>
@@ -330,102 +315,20 @@ function ResultCard({
         </div>
       </div>
 
-      {!decDone ? (
-        <div
-          style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid var(--border)",
-            borderRadius: 14,
-            padding: 16,
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: "var(--text-primary)" }}>
-            Prendre une décision
-          </div>
-          <div className="small" style={{ opacity: 0.6, marginBottom: 12 }}>
-            Commentaire obligatoire (min 4 caractères)
-          </div>
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="Justification de la décision PASS ou BLOCK…"
-            style={{ width: "100%", marginBottom: 12, minHeight: 70 }}
-          />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <button
-              onClick={() => decide("PASS")}
-              disabled={decBusy || comment.trim().length < 4}
-              style={{
-                padding: "12px",
-                borderRadius: 10,
-                border: "1.5px solid #2ECC8F",
-                background:
-                  comment.trim().length >= 4 ? "rgba(46,204,143,0.12)" : "rgba(255,255,255,0.04)",
-                color: "#2ECC8F",
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: "pointer",
-                opacity: comment.trim().length < 4 ? 0.4 : 1,
-                transition: "all 0.2s",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <CheckCircle2 size={16} /> PASS
-            </button>
-            <button
-              onClick={() => decide("BLOCK")}
-              disabled={decBusy || comment.trim().length < 4}
-              style={{
-                padding: "12px",
-                borderRadius: 10,
-                border: "1.5px solid #E84040",
-                background:
-                  comment.trim().length >= 4 ? "rgba(232,64,64,0.12)" : "rgba(255,255,255,0.04)",
-                color: "#E84040",
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: "pointer",
-                opacity: comment.trim().length < 4 ? 0.4 : 1,
-                transition: "all 0.2s",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <Ban size={16} /> BLOCK
-            </button>
-          </div>
+      <div
+        style={{
+          background: "rgba(45,127,214,0.08)",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
+        <div className="small" style={{ opacity: 0.85, lineHeight: 1.5 }}>
+          La décision <b>valider / bloquer</b> relève de la <b>Cellule de Conformité</b>.
+          En cas de correspondance, un dossier est automatiquement transmis aux <b>Alertes</b> pour décision.
         </div>
-      ) : (
-        <div
-          style={{
-            padding: "14px 16px",
-            borderRadius: 14,
-            marginBottom: 16,
-            textAlign: "center",
-            background: decDone === "PASS" ? "rgba(46,204,143,0.12)" : "rgba(232,64,64,0.12)",
-            border: `1px solid ${
-              decDone === "PASS" ? "rgba(46,204,143,0.3)" : "rgba(232,64,64,0.3)"
-            }`,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
-            {decDone === "PASS" ? (
-              <CheckCircle2 size={22} color="#2ECC8F" />
-            ) : (
-              <Ban size={22} color="#E84040" />
-            )}
-          </div>
-          <div style={{ fontWeight: 700, color: decDone === "PASS" ? "#2ECC8F" : "#E84040" }}>
-            Décision {decDone} enregistrée
-          </div>
-        </div>
-      )}
+      </div>
 
       <div style={{ display: "grid", gap: 8 }}>
         <button
@@ -714,15 +617,6 @@ export default function AnalystHome() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function handleDecision(decision: "PASS" | "BLOCK", comment: string) {
-    if (!result) return;
-    await setScreeningDecision(result.request_id, decision, comment);
-    try {
-      const d: any = await getScreeningDetails(result.request_id);
-      setResult((prev) => (prev ? { ...prev, decision_latest: d?.decision_latest ?? null } : prev));
-    } catch {}
   }
 
   const procSteps = mode === "simple" ? PROC_STEPS_SIMPLE : PROC_STEPS_DOCUMENT;
@@ -1286,7 +1180,7 @@ export default function AnalystHome() {
 
           {step === "result" && result && (
             <div className="screen" style={{ animation: "fadeIn 0.4s ease" }}>
-              <ResultCard result={result} onReset={reset} onDecision={handleDecision} />
+              <ResultCard result={result} onReset={reset} />
             </div>
           )}
         </div>
