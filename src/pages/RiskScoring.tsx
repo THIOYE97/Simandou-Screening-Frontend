@@ -16,6 +16,8 @@ const SEV_WORD: Record<string, string> = { LOW: "Mineure", MEDIUM: "Moyenne", HI
 export default function RiskScoring() {
   const { toast } = useUI();
   const [scenarios, setScenarios] = useState<RiskScenario[]>([]);
+  const [weights, setWeights] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [result, setResult] = useState<Assessment | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -28,7 +30,11 @@ export default function RiskScoring() {
   const [adverse, setAdverse] = useState(false);
 
   async function loadScenarios() {
-    try { setScenarios(await listScenarios()); }
+    try {
+      const list = await listScenarios();
+      setScenarios(list);
+      setWeights(Object.fromEntries(list.map((s) => [s.id, String(s.risk_weight)])));
+    }
     catch { toast("Impossible de charger les scénarios", "error"); }
   }
   useEffect(() => { loadScenarios(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -36,6 +42,23 @@ export default function RiskScoring() {
   async function toggle(s: RiskScenario) {
     try { await updateScenario(s.id, { active: !s.active }); toast(s.active ? "Scénario désactivé" : "Scénario activé"); await loadScenarios(); }
     catch { toast("Modification réservée aux administrateurs", "error"); }
+  }
+
+  // Édition des points d'un scénario (poids) — sauvegarde à la validation.
+  async function saveWeight(s: RiskScenario) {
+    const raw = weights[s.id];
+    const val = Math.max(0, Math.min(100, Math.round(Number(raw))));
+    if (raw === "" || Number.isNaN(Number(raw))) { setWeights((w) => ({ ...w, [s.id]: String(s.risk_weight) })); return; }
+    if (val === s.risk_weight) { setWeights((w) => ({ ...w, [s.id]: String(val) })); return; }
+    setSavingId(s.id);
+    try {
+      await updateScenario(s.id, { risk_weight: val });
+      toast(`« ${s.name} » : ${val} points`);
+      await loadScenarios();
+    } catch {
+      toast("Modification réservée à la Conformité", "error");
+      setWeights((w) => ({ ...w, [s.id]: String(s.risk_weight) }));
+    } finally { setSavingId(null); }
   }
   async function seed() {
     try { await seedReferentiel(); toast("Référentiel chargé"); await loadScenarios(); }
@@ -111,7 +134,7 @@ export default function RiskScoring() {
 
         {/* Scénarios */}
         <Card>
-          <CardTitle sub="Activez ou désactivez les situations qui déclenchent une alerte.">
+          <CardTitle sub="Ajustez le nombre de points de chaque situation et activez/désactivez les alertes.">
             <SlidersHorizontal size={18} /> Règles de détection
           </CardTitle>
           {scenarios.length === 0 ? (
@@ -120,12 +143,27 @@ export default function RiskScoring() {
           ) : (
             <div className="ds-grid" style={{ gap: 10 }}>
               {scenarios.map((s) => (
-                <div key={s.id} className="ds-between" style={{ padding: "12px 14px", border: "1px solid var(--border)", borderRadius: "var(--r-md)" }}>
+                <div key={s.id} className="ds-between" style={{ padding: "12px 14px", border: "1px solid var(--border)", borderRadius: "var(--r-md)", gap: 12 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 650, fontSize: 14 }}>{s.name}</div>
-                    <div className="ds-small ds-muted">{CAT_WORD[s.category] || s.category} · gravité {SEV_WORD[s.severity]?.toLowerCase() || s.severity} · +{s.risk_weight} pts</div>
+                    <div className="ds-small ds-muted">{CAT_WORD[s.category] || s.category} · gravité {SEV_WORD[s.severity]?.toLowerCase() || s.severity}</div>
                   </div>
-                  <Switch checked={s.active} onChange={() => toggle(s)} />
+                  <div className="ds-row" style={{ gap: 12, flexShrink: 0 }}>
+                    <div className="ds-row" style={{ gap: 6 }} title="Points ajoutés au score si la règle se déclenche (0 à 100)">
+                      <span className="ds-muted" style={{ fontSize: 15, fontWeight: 700 }}>+</span>
+                      <Input
+                        type="number" min={0} max={100}
+                        style={{ width: 68, textAlign: "center", opacity: s.active ? 1 : 0.5 }}
+                        value={weights[s.id] ?? String(s.risk_weight)}
+                        disabled={savingId === s.id}
+                        onChange={(e) => setWeights((w) => ({ ...w, [s.id]: e.target.value }))}
+                        onBlur={() => saveWeight(s)}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      />
+                      <span className="ds-muted ds-small">pts</span>
+                    </div>
+                    <Switch checked={s.active} onChange={() => toggle(s)} />
+                  </div>
                 </div>
               ))}
             </div>
