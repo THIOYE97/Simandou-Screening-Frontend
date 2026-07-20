@@ -140,6 +140,7 @@ export interface ScreeningListItem {
   completed_at?:      string | null;
   case_id?:           string | null;
   kind?:              string | null;
+  entity_type?:       string | null;   // INDIVIDUAL | COMPANY
   client_name?:       string | null;
   first_name?:        string | null;
   last_name?:         string | null;

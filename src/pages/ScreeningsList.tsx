@@ -23,6 +23,14 @@ type Row = {
   raw: any;
 };
 
+// Une société se reconnaît au type d'entité renvoyé par l'API ; on garde la
+// détection par libellé en repli pour les demandes anciennes.
+function isCompany(r: ScreeningListItem) {
+  const et = String((r as any).entity_type || "").toUpperCase();
+  if (et) return et === "COMPANY";
+  return /KYS|KYB|COMPANY/.test(String(r.kind || "").toUpperCase());
+}
+
 function personName(r: ScreeningListItem) {
   return r.client_name || [r.first_name, r.last_name].filter(Boolean).join(" ").trim() || "—";
 }
@@ -51,7 +59,7 @@ export default function ScreeningsList() {
   const rows: Row[] = useMemo(() => {
     const p: Row[] = screenings.map((r) => ({
       kind: "person", id: r.id, label: personName(r),
-      typeLabel: String(r.kind || "").toUpperCase().match(/KYS|KYB/) ? "Personne morale" : "Personne physique",
+      typeLabel: isCompany(r) ? "Personne morale" : "Personne physique",
       risk: r.risk_level, date: r.created_at, raw: r,
     }));
     const o: Row[] = txns.map((t) => ({
