@@ -1,6 +1,6 @@
 // src/api.ts
 import axios from "axios";
-import { getToken } from "./auth";
+import { getToken, getRefreshToken, setSession, clearToken } from "./auth";
 
 // ─────────────────────────────────────────────
 // Error helper — FastAPI 422 detail can be array
@@ -39,15 +39,59 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 globally — clear token and redirect to login
+// ─────────────────────────────────────────────
+// Renouvellement automatique de la session
+// ─────────────────────────────────────────────
+// Le jeton d'accès est volontairement court (30 min). Sans renouvellement,
+// l'utilisateur était déconnecté dès qu'il laissait l'application ouverte sans
+// agir. On échange donc le jeton de rafraîchissement contre un nouveau couple,
+// puis on rejoue la requête d'origine — de façon transparente.
+// Un seul rafraîchissement est mené à la fois : les requêtes concurrentes qui
+// prennent un 401 attendent le même résultat au lieu d'en déclencher plusieurs.
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function refreshSession(): Promise<string | null> {
+  const refresh_token = getRefreshToken();
+  if (!refresh_token) return null;
+  try {
+    // Instance nue : évite de repasser par les intercepteurs (boucle infinie).
+    const { data } = await axios.post(
+      `${(import.meta.env.VITE_API_URL as string) || ""}/auth/refresh`,
+      { refresh_token },
+      { timeout: 30_000 },
+    );
+    const access = data?.access_token ?? null;
+    if (!access) return null;
+    setSession(access, data?.refresh_token ?? null);
+    return access;
+  } catch {
+    return null;
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error?.response?.status === 401) {
-      const url = error?.config?.url ?? "";
-      // Don't redirect on the login call itself
-      if (!url.includes("/auth/login")) {
-        console.warn("[api] 401 on", url, "— token may be invalid or expired");
+  async (error) => {
+    const status = error?.response?.status;
+    const original: any = error?.config ?? {};
+    const url: string = original?.url ?? "";
+    const isAuthCall = url.includes("/auth/login") || url.includes("/auth/refresh");
+
+    if (status === 401 && !isAuthCall && !original.__retried) {
+      original.__retried = true;
+      if (!refreshInFlight) {
+        refreshInFlight = refreshSession().finally(() => { refreshInFlight = null; });
+      }
+      const token = await refreshInFlight;
+      if (token) {
+        original.headers = original.headers ?? {};
+        original.headers.Authorization = `Bearer ${token}`;
+        return api.request(original);      // rejoue la requête d'origine
+      }
+      // Renouvellement impossible : la session est réellement terminée.
+      clearToken();
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.assign("/login");
       }
     }
     return Promise.reject(error);
@@ -65,7 +109,9 @@ export async function login(email: string, password: string) {
     console.error("[login] Réponse backend sans token:", data);
     throw new Error("No token in response");
   }
-  console.log("[login] ✅ Token reçu, longueur:", token.length);
+  // Conserve le jeton de rafraîchissement : sans lui, la session expire au
+  // bout de 30 minutes et l'utilisateur doit se reconnecter.
+  setSession(token as string, data?.refresh_token ?? null);
   return { access_token: token as string };
 }
 
