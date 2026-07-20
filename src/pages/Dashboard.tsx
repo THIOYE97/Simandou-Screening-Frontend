@@ -87,7 +87,7 @@ export default function Dashboard() {
                 {stats.recent.map((r) => (
                   <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => nav(`/screenings/${r.id}`)}>
                     <td style={{ fontWeight: 600 }}>{r.client_name || [r.first_name, r.last_name].filter(Boolean).join(" ") || "—"}</td>
-                    <td><Badge tone="neutral">{/(KYS|KYB|COMPANY|ENTREPRISE)/i.test(String(r.kind || "")) ? "Entreprise" : "Personne"}</Badge></td>
+                    <td><Badge tone="neutral">{/(KYS|KYB|COMPANY|ENTREPRISE)/i.test(String(r.kind || "")) ? "Personne morale" : "Personne physique"}</Badge></td>
                     <td>{r.risk_level ? <RiskBadge level={r.risk_level} /> : <span className="ds-small ds-muted">—</span>}</td>
                     <td className="ds-small">{String(r.status || "—")}</td>
                     <td className="ds-small ds-muted">{fmtDate(r.created_at)}</td>
