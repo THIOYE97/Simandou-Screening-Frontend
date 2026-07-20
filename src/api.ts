@@ -552,6 +552,11 @@ export interface IngestResult {
   total_score: number;
   triggered: Array<{ code: string; name: string; severity: string; weight: number }>;
   alerts_created: number;
+  /** Parties filtrées contre les listes (émetteur / bénéficiaire). */
+  parties?: Array<{
+    role: string; name: string; screened?: boolean; score: number; is_pep: boolean;
+    match_count: number; top_match?: string | null; list?: string | null;
+  }>;
 }
 export async function listTransactions(customer_ref?: string): Promise<Transaction[]> {
   const { data } = await api.get("/kyt/transactions", { params: { customer_ref, limit: 100 } });
