@@ -8,13 +8,8 @@ import {
 } from "../api";
 import {
   Button, Card, CardTitle, PageHeader, RiskBadge, Field, Input, Select, Textarea,
-  Drawer, KV, EmptyState, useUI, SOURCE_LABEL, CHANNEL_LABEL, SAR_STATUS, SAR_DECISION, fmtMoney, fmtDate,
+  Drawer, KV, EmptyState, useUI, SOURCE_LABEL, CHANNEL_LABEL, SAR_STATUS, SAR_DECISION, fmtMoney, fmtDate, AssessmentContext,
 } from "../ui";
-
-const CTX_LABEL: Record<string, string> = {
-  amount: "Montant", channel: "Moyen", source_system: "Provenance", country: "Pays",
-  country_is_high_risk: "Pays à risque", pattern: "Schéma détecté",
-};
 
 const SAR_NEXT: Record<string, string> = { DRAFT: "SUBMITTED", SUBMITTED: "UNDER_REVIEW", UNDER_REVIEW: "DECIDED" };
 const SAR_NEXT_LABEL: Record<string, string> = { SUBMITTED: "Transmettre à la Conformité", UNDER_REVIEW: "Passer en examen", DECIDED: "Rendre la décision" };
@@ -234,8 +229,7 @@ export default function Transactions() {
                   : <div className="ds-small ds-muted">Aucun comportement atypique détecté.</div>}
                 {detail.assessment.context && Object.keys(detail.assessment.context).length > 0 && (
                   <>
-                    <div className="ds-section-label">Données analysées</div>
-                    <KV items={Object.entries(detail.assessment.context).map(([k, v]) => [CTX_LABEL[k] || k, typeof v === "boolean" ? (v ? "Oui" : "Non") : String(v)])} />
+                    <AssessmentContext context={detail.assessment.context} />
                   </>
                 )}
               </>

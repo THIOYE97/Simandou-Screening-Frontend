@@ -227,6 +227,58 @@ export function PartyScreeningRow({ party }: { party: ScreenedParty }) {
   );
 }
 
+/* ---------- Contexte d'une évaluation de risque ----------------------------
+   Rendu MUTUALISÉ : ce bloc s'affiche dans les alertes, la surveillance des
+   opérations et les vérifications. Chaque écran en avait sa propre copie, avec
+   son propre dictionnaire — d'où des clés techniques non traduites et des
+   objets rendus « [object Object] » selon l'écran. Un seul rendu ici. */
+const CTX_LABEL: Record<string, string> = {
+  amount: "Montant", channel: "Moyen", source_system: "Provenance", country: "Pays",
+  country_is_high_risk: "Pays à risque", country_is_non_cooperative: "Pays non coopératif",
+  pattern: "Schéma détecté", match_score: "Ressemblance liste",
+  is_pep: "Personne exposée (PEP)", adverse_media_hit: "Presse négative",
+  matched_name: "Nom rapproché", matched_party: "Partie rapprochée",
+  match_count: "Nombre de correspondances",
+  ubo_match_score: "Ressemblance liste (bénéficiaire effectif)",
+  ubo_is_pep: "Bénéficiaire effectif exposé (PEP)",
+  ubo_count: "Bénéficiaires effectifs déclarés",
+};
+
+// Affichées dans un bloc dédié (screened_parties) ou internes au moteur (« _ »).
+const CTX_HIDDEN = new Set(["screened_parties"]);
+
+function ctxValue(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "—";
+  if (typeof v === "boolean") return v ? "Oui" : "Non";
+  // Garde-fou : un objet ne doit JAMAIS être rendu tel quel.
+  if (typeof v === "object") return Array.isArray(v) ? `${v.length} élément(s)` : "—";
+  return String(v);
+}
+
+export function AssessmentContext({ context }: { context?: Record<string, any> | null }) {
+  if (!context || Object.keys(context).length === 0) return null;
+  const entries = Object.entries(context).filter(
+    ([k]) => !CTX_HIDDEN.has(k) && !k.startsWith("_"),
+  );
+  const parties = Array.isArray(context.screened_parties) ? context.screened_parties : [];
+  return (
+    <>
+      {entries.length > 0 && (
+        <>
+          <div className="ds-section-label">Données analysées</div>
+          <KV items={entries.map(([k, v]) => [CTX_LABEL[k] || k, ctxValue(v)])} />
+        </>
+      )}
+      {parties.length > 0 && (
+        <>
+          <div className="ds-section-label">Parties vérifiées</div>
+          {parties.map((p: ScreenedParty, i: number) => <PartyScreeningRow key={i} party={p} />)}
+        </>
+      )}
+    </>
+  );
+}
+
 export function Spinner() { return <span className="ds-spinner" role="status" aria-label="Chargement" />; }
 export function SkeletonRows({ rows = 4 }: { rows?: number }) {
   return (
