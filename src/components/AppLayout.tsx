@@ -3,7 +3,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Home, UserPlus, ClipboardList, Radio, FileBarChart, Settings2, Banknote,
-  LayoutDashboard, AlertTriangle, Gauge, ArrowLeftRight, Building2,
+  LayoutDashboard, AlertTriangle, Gauge, ArrowLeftRight, Building2, Network,
   LogOut, Moon, Sun, Menu, ShieldCheck,
 } from "lucide-react";
 import { getToken, clearToken } from "../auth";
