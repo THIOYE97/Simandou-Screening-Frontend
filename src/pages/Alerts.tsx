@@ -2,14 +2,14 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle, RefreshCw, Wand2, CheckCircle2, ArrowRight, Eye, ShieldX,
-  User, ArrowLeftRight, ListChecks, Scale,
+  User, ArrowLeftRight, ListChecks, Scale, UserCheck,
 } from "lucide-react";
 import {
   listAlerts, updateAlertStatus, seedAlertRules, getAlertDetail,
   type Alert, type AlertStatus, type AlertDetail,
 } from "../api";
 import {
-  Button, Card, PageHeader, Badge, RiskBadge, EmptyState, SkeletonRows, Select,
+  Button, Card, PageHeader, Badge, RiskBadge, EmptyState, SkeletonRows, Select, PartyScreeningRow,
   Drawer, KV, DecisionBadge, AuditTimeline, Pagination, PAGE_SIZE, useUI,
   ALERT_STATUS, SOURCE_LABEL, CHANNEL_LABEL, fmtDate, fmtMoney,
 } from "../ui";
@@ -20,7 +20,13 @@ const CTX_LABEL: Record<string, string> = {
   match_score: "Ressemblance liste", is_pep: "Personne exposée (PEP)", country: "Pays",
   country_is_high_risk: "Pays à risque", amount: "Montant", channel: "Moyen", pattern: "Schéma détecté",
   adverse_media_hit: "Presse négative", source_system: "Provenance",
+  country_is_non_cooperative: "Pays non coopératif", matched_name: "Nom rapproché",
+  matched_party: "Partie rapprochée", match_count: "Nombre de correspondances",
 };
+
+// Clés exclues du tableau brut : soit affichées dans un bloc dédié
+// (screened_parties), soit internes au moteur (préfixe « _ »).
+const CTX_HIDDEN = new Set(["screened_parties"]);
 
 const A = {
   review: { to: "IN_REVIEW" as AlertStatus, label: "Prendre en charge", icon: <Eye size={14} />, variant: "secondary" as const },
@@ -35,8 +41,12 @@ const NEXT: Record<AlertStatus, { to: AlertStatus; label: string; icon: React.Re
   CLOSED_TRUE_POSITIVE: [], CLOSED_FALSE_POSITIVE: [],
 };
 
-function ctxValue(k: string, v: any): string {
+function ctxValue(_k: string, v: any): string {
+  if (v === null || v === undefined) return "—";
   if (typeof v === "boolean") return v ? "Oui" : "Non";
+  // Garde-fou : un objet/tableau ne doit jamais être rendu tel quel
+  // (sinon « [object Object] » s'affiche à l'écran).
+  if (typeof v === "object") return Array.isArray(v) ? `${v.length} élément(s)` : "—";
   return String(v);
 }
 
@@ -199,7 +209,16 @@ export default function Alerts() {
             {ass?.context && Object.keys(ass.context).length > 0 && (
               <>
                 <div className="ds-section-label">Données analysées</div>
-                <KV items={Object.entries(ass.context).map(([k, v]) => [CTX_LABEL[k] || k, ctxValue(k, v)])} />
+                <KV items={Object.entries(ass.context)
+                  .filter(([k]) => !CTX_HIDDEN.has(k) && !k.startsWith("_"))
+                  .map(([k, v]) => [CTX_LABEL[k] || k, ctxValue(k, v)])} />
+              </>
+            )}
+
+            {Array.isArray(ass?.context?.screened_parties) && ass.context.screened_parties.length > 0 && (
+              <>
+                <div className="ds-section-label"><UserCheck size={13} style={{ verticalAlign: -2 }} /> Parties vérifiées</div>
+                {ass.context.screened_parties.map((p: any, i: number) => <PartyScreeningRow key={i} party={p} />)}
               </>
             )}
 

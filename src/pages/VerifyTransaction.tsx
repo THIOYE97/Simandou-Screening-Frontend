@@ -2,14 +2,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Banknote, Send, Sparkles, ListChecks, CheckCircle2, RefreshCw, ShieldAlert, ArrowRight, Search,
-  Download, ShieldCheck, UserCheck, AlertTriangle, Loader2,
+  Download, UserCheck, Loader2,
 } from "lucide-react";
 import {
   ingestTransaction, getCurrencies, downloadTransactionExportPdf,
   type Currency, type IngestResult,
 } from "../api";
 import {
-  Button, Card, CardTitle, PageHeader, RiskBadge, Badge, Field, Input, Select, useUI,
+  Button, Card, CardTitle, PageHeader, RiskBadge, PartyScreeningRow, Field, Input, Select, useUI,
   SOURCE_LABEL, CHANNEL_LABEL, fmtMoney,
 } from "../ui";
 
@@ -21,34 +21,6 @@ const STEPS = [
 ];
 
 type Step = "form" | "processing" | "result";
-
-/** Statut de filtrage d'une partie à l'opération (émetteur / bénéficiaire). */
-function PartyRow({ p }: { p: any }) {
-  const hasMatch = (p.match_count ?? 0) > 0;
-  const notScreened = p.screened === false;
-  return (
-    <div style={{ padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--r-md)", marginBottom: 8 }}>
-      <div className="ds-between" style={{ gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div className="ds-small ds-muted">{p.role}</div>
-          <div style={{ fontWeight: 650, fontSize: 14 }}>{p.name}</div>
-        </div>
-        {notScreened
-          ? <Badge tone="neutral"><AlertTriangle size={13} /> Non vérifié</Badge>
-          : hasMatch
-            ? <Badge tone="critical"><ShieldAlert size={13} /> {p.match_count} correspondance(s)</Badge>
-            : <Badge tone="low"><ShieldCheck size={13} /> Aucune correspondance</Badge>}
-      </div>
-      {hasMatch && (
-        <div className="ds-small ds-muted" style={{ marginTop: 6 }}>
-          Rapproché de <b style={{ color: "var(--text)" }}>{p.top_match}</b>
-          {p.list ? <> · {p.list}</> : null} · similarité {p.score}%
-          {p.is_pep ? <> · <b>personne politiquement exposée</b></> : null}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function VerifyTransaction() {
   const { toast } = useUI();
@@ -177,7 +149,7 @@ export default function VerifyTransaction() {
               {parties.length > 0 && (
                 <>
                   <div className="ds-section-label"><UserCheck size={13} style={{ verticalAlign: -2 }} /> Parties vérifiées</div>
-                  {parties.map((p, i) => <PartyRow key={i} p={p} />)}
+                  {parties.map((p, i) => <PartyScreeningRow key={i} party={p} />)}
                 </>
               )}
 

@@ -190,6 +190,43 @@ export function AuditTimeline({ events }: { events?: AuditEvent[] }) {
   );
 }
 
+/* ---------- Partie filtrée contre les listes (émetteur / bénéficiaire) ----------
+   Affiche aussi les parties SAINES : pouvoir démontrer qu'un contrôle a eu lieu
+   et n'a rien donné est une information de conformité, distincte de l'absence
+   de contrôle. */
+export type ScreenedParty = {
+  role: string; name: string; screened?: boolean; score?: number;
+  is_pep?: boolean; match_count?: number; top_match?: string | null; list?: string | null;
+};
+
+export function PartyScreeningRow({ party }: { party: ScreenedParty }) {
+  const hasMatch = (party.match_count ?? 0) > 0;
+  const notScreened = party.screened === false;
+  return (
+    <div style={{ padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--r-md)", marginBottom: 8 }}>
+      <div className="ds-between" style={{ gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div className="ds-small ds-muted">{party.role}</div>
+          <div style={{ fontWeight: 650, fontSize: 14 }}>{party.name}</div>
+        </div>
+        {notScreened
+          ? <Badge tone="neutral"><ShieldQuestion size={13} /> Non vérifié</Badge>
+          : hasMatch
+            ? <Badge tone="critical"><ShieldAlert size={13} /> {party.match_count} correspondance(s)</Badge>
+            : <Badge tone="low"><ShieldCheck size={13} /> Aucune correspondance</Badge>}
+      </div>
+      {hasMatch && (
+        <div className="ds-small ds-muted" style={{ marginTop: 6 }}>
+          Rapproché de <b style={{ color: "var(--text)" }}>{party.top_match}</b>
+          {party.list ? <> · {party.list}</> : null}
+          {party.score ? <> · similarité {party.score}%</> : null}
+          {party.is_pep ? <> · <b>personne politiquement exposée</b></> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Spinner() { return <span className="ds-spinner" role="status" aria-label="Chargement" />; }
 export function SkeletonRows({ rows = 4 }: { rows?: number }) {
   return (
