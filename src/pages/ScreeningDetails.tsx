@@ -85,6 +85,8 @@ export default function ScreeningDetails() {
   const decisionLatest = data?.decision_latest ?? null;
 
   const sorted = useMemo(() => [...matches].sort((a, b) => Number(b.match_score ?? 0) - Number(a.match_score ?? 0)), [matches]);
+  // Regroupement inter-sources calculé côté serveur.
+  const grouped: AnyObj[] = Array.isArray(data?.matches_grouped) ? data.matches_grouped : [];
   const strong = sorted.filter((m) => Number(m.match_score ?? 0) >= 85).length;
   const entities = new Set(sorted.map((m) => m.entity_id)).size;
   const name = displayName(data);
@@ -129,6 +131,38 @@ export default function ScreeningDetails() {
               <div style={{ padding: "20px 22px 0" }}>
                 <CardTitle sub="Les personnes/entités des listes qui ressemblent au sujet.">Correspondances trouvées</CardTitle>
               </div>
+              {/* Synthèse par personne : une même personne peut être désignée par
+                  plusieurs autorités. Le nombre d'autorités est en soi une
+                  information de risque — figurer sur cinq listes n'équivaut pas
+                  à figurer sur une seule. Le détail par source reste dessous,
+                  car c'est lui qui fonde une décision de blocage. */}
+              {grouped.length > 0 && (
+                <div style={{ padding: "0 22px 4px" }}>
+                  <div className="ds-section-label">Personnes rapprochées ({grouped.length})</div>
+                  {grouped.map((g: AnyObj, i: number) => (
+                    <div key={i} className="ds-between" style={{
+                      padding: "10px 12px", border: "1px solid var(--border)",
+                      borderRadius: "var(--r-md)", marginBottom: 8, gap: 10,
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 650, fontSize: 14 }}>{g.name}</div>
+                        <div className="ds-small ds-muted">
+                          {g.source_count > 1
+                            ? `Désignée par ${g.source_count} autorités : `
+                            : "Désignée par : "}
+                          {(g.sources || []).map((s: AnyObj) => s.name || s.code).filter(Boolean).join(" · ") || "—"}
+                          {g.is_pep ? " · personne politiquement exposée" : ""}
+                        </div>
+                      </div>
+                      <div className="ds-row" style={{ gap: 8, flexShrink: 0 }}>
+                        {g.source_count > 1 && <Badge tone="info">{g.source_count} listes</Badge>}
+                        <Badge tone={scoreTone(Number(g.score ?? 0))}>{g.score}%</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {sorted.length === 0 ? (
                 <EmptyState icon={<CheckCircle2 size={26} />} title="Aucune correspondance"
                   subtitle="Aucune personne ou entité des listes ne correspond au sujet." />
