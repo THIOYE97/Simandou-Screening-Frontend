@@ -4,8 +4,10 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import {
   ClipboardCheck, RefreshCw, Download, ArrowLeft, CheckCircle2,
   ListChecks, Users, Landmark, ShieldAlert, ChevronRight, Eye, ExternalLink, Scale,
+  Network, AlertTriangle, Plus,
 } from "lucide-react";
-import { downloadScreeningExportPdf, getScreeningDetails, getComplianceEvents, type ComplianceEvent } from "../api";
+import { downloadScreeningExportPdf, getScreeningDetails, getComplianceEvents, lookupUboDeclaration,
+  type ComplianceEvent, type UboLookup } from "../api";
 import {
   Button, Card, CardTitle, PageHeader, RiskBadge, Badge,
   Drawer, KV, AuditTimeline, EmptyState, SkeletonRows, StatCard, useUI, fmtDate,
@@ -48,6 +50,7 @@ export default function ScreeningDetails() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<AnyObj | null>(null);
   const [events, setEvents] = useState<ComplianceEvent[]>([]);
+  const [ubo, setUbo] = useState<UboLookup | null>(null);
 
   async function load() {
     if (!id) return;
@@ -63,6 +66,21 @@ export default function ScreeningDetails() {
 
   const result = data?.result ?? null;
   const request = data?.request ?? null;
+  // Personne morale : le type d'entité est désormais à la racine du payload ;
+  // on garde le repli sur la dénomination pour les demandes antérieures.
+  const payload: AnyObj = request?.request_payload ?? {};
+  const isCompany =
+    String(payload.entity_type || payload.meta?.entity_type || "").toUpperCase() === "COMPANY"
+    || !!(payload.company_name || payload.meta?.company_name);
+
+  useEffect(() => {
+    if (!isCompany) { setUbo(null); return; }
+    const company_name = payload.company_name || payload.meta?.company_name || payload.name;
+    if (!company_name) return;
+    lookupUboDeclaration({ company_name, company_ref: payload.registration_number || undefined })
+      .then(setUbo)
+      .catch(() => setUbo({ found: false, declaration: null }));
+  }, [isCompany, request?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const matches: AnyObj[] = Array.isArray(data?.matches) ? data.matches : [];
   const decisionLatest = data?.decision_latest ?? null;
 
@@ -168,6 +186,47 @@ export default function ScreeningDetails() {
                   <dt>Action conseillée</dt><dd>{result?.recommended_action || "—"}</dd>
                 </dl>
               </Card>
+
+              {isCompany && (
+                <Card>
+                  <CardTitle sub="Obligation LBC/FT : les bénéficiaires effectifs d'une personne morale doivent être identifiés.">
+                    <Network size={18} /> Bénéficiaires effectifs
+                  </CardTitle>
+                  {ubo === null ? (
+                    <div className="ds-small ds-muted">Recherche…</div>
+                  ) : ubo.found && ubo.declaration ? (
+                    <>
+                      <dl className="ds-kv">
+                        <dt>Déclarés</dt><dd>{ubo.owners_count} bénéficiaire(s) effectif(s)</dd>
+                        <dt>Sur une liste</dt>
+                        <dd>{(ubo.flagged_count ?? 0) > 0
+                          ? <b style={{ color: "var(--risk-high)" }}>{ubo.flagged_count} rapproché(s)</b>
+                          : "Aucun"}</dd>
+                        <dt>Dernier filtrage</dt>
+                        <dd>{ubo.last_screened_at ? fmtDate(ubo.last_screened_at) : "Jamais filtré"}</dd>
+                      </dl>
+                      <Button className="ds-mt-16" variant="secondary" size="sm"
+                        icon={<ExternalLink size={14} />}
+                        onClick={() => nav("/beneficial-owners")}>
+                        Ouvrir la chaîne de détention
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {/* L'absence de bénéficiaire effectif déclaré n'est pas neutre :
+                          elle rend la vérification incomplète au regard des obligations. */}
+                      <div className="ds-reason" style={{ borderLeftColor: "var(--risk-high)" }}>
+                        <AlertTriangle size={15} style={{ color: "var(--risk-high)" }} />
+                        Vérification incomplète — aucun bénéficiaire effectif déclaré pour cette personne morale.
+                      </div>
+                      <Button className="ds-mt-16" size="sm" icon={<Plus size={14} />}
+                        onClick={() => nav("/beneficial-owners")}>
+                        Déclarer les bénéficiaires effectifs
+                      </Button>
+                    </>
+                  )}
+                </Card>
+              )}
 
               <Card>
                 <CardTitle sub="Traçabilité et audit des décisions de la Conformité sur ce dossier.">Historique de décision</CardTitle>

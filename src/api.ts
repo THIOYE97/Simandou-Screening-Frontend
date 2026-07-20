@@ -771,3 +771,15 @@ export async function screenUboDeclaration(id: string): Promise<UboScreenResult>
   const { data } = await api.post(`/ubo/declarations/${id}/screen`);
   return data;
 }
+
+export interface UboLookup {
+  found: boolean;
+  declaration: UboDeclaration | null;
+  owners_count?: number;
+  flagged_count?: number;
+  last_screened_at?: string | null;
+}
+export async function lookupUboDeclaration(params: { company_name?: string; company_ref?: string }): Promise<UboLookup> {
+  const { data } = await api.get("/ubo/declarations/lookup", { params });
+  return data;
+}
