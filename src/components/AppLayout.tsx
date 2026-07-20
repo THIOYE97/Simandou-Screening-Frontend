@@ -58,7 +58,7 @@ export default function AppLayout() {
       .catch(() => { /* silencieux */ });
   }, [loc.pathname, fullAccess]);
 
-  // Principal = travail opérationnel : lancer les vérifications KYC / KYB / KYT.
+  // Principal = travail opérationnel : lancer les vérifications KYC / KYS / KYT.
   const main: Item[] = [
     { to: "/dashboard", label: NAV.home, icon: Home, exact: true },
     { to: "/analyst", label: NAV.verify, icon: UserPlus },

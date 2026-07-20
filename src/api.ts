@@ -471,7 +471,7 @@ export interface Alert {
   resolution?: string | null;
   created_at: string;
 }
-export async function listAlerts(params: { status?: string; severity?: string } = {}): Promise<Alert[]> {
+export async function listAlerts(params: { status?: string; severity?: string; source?: string } = {}): Promise<Alert[]> {
   const { data } = await api.get("/alertes", { params: { ...params, limit: 100 } });
   return data;
 }

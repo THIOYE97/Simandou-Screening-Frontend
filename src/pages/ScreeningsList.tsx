@@ -51,7 +51,7 @@ export default function ScreeningsList() {
   const rows: Row[] = useMemo(() => {
     const p: Row[] = screenings.map((r) => ({
       kind: "person", id: r.id, label: personName(r),
-      typeLabel: String(r.kind || "").toUpperCase().includes("KYB") ? "Entreprise" : "Personne",
+      typeLabel: String(r.kind || "").toUpperCase().match(/KYS|KYB/) ? "Entreprise" : "Personne",
       risk: r.risk_level, date: r.created_at, raw: r,
     }));
     const o: Row[] = txns.map((t) => ({

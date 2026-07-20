@@ -110,7 +110,7 @@ export default function VerifyTransaction() {
                 <Field label="Client concerné (réf. ou nom)"><Input placeholder="ex. Moussa Camara" value={customer} onChange={(e) => setCustomer(e.target.value)} /></Field>
                 <div className="ds-grid ds-grid-2" style={{ gap: 12 }}>
                   <Field label="Bénéficiaire"><Input placeholder="ex. Adama Diarra" value={cpName} onChange={(e) => setCpName(e.target.value)} /></Field>
-                  <Field label="Pays bénéficiaire" hint="Nom ou code (ex. Mali, ML)"><Input placeholder="ex. Mali" value={cpCountry} onChange={(e) => setCpCountry(e.target.value)} /></Field>
+                  <Field label="Pays bénéficiaire" hint="Code ou nom du pays"><Input placeholder="ex. ML, GN, RCI, SEN" value={cpCountry} onChange={(e) => setCpCountry(e.target.value)} /></Field>
                 </div>
               </div>
               <Button className="ds-mt-16" size="lg" icon={<Search size={17} />} onClick={analyze} disabled={busy || !amount}>

@@ -40,11 +40,21 @@ function ctxValue(k: string, v: any): string {
   return String(v);
 }
 
+// Type d'alerte : vérification d'un client/fournisseur ou opération atypique.
+// SCORING = alertes historiques, antérieures à la qualification des origines.
+function kindOf(source?: string | null) {
+  const s = String(source || "").toUpperCase();
+  if (s === "KYT") return { label: "Opération atypique", icon: <ArrowLeftRight size={13} />, tone: "medium" as const };
+  if (s === "SCREENING") return { label: "Vérification client", icon: <User size={13} />, tone: "info" as const };
+  return { label: "Évaluation", icon: <Scale size={13} />, tone: "neutral" as const };
+}
+
 export default function Alerts() {
   const { toast, confirm, prompt } = useUI();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [status, setStatus] = useState("");
   const [sev, setSev] = useState("");
+  const [kind, setKind] = useState("");     // SCREENING = client/fournisseur, KYT = opération
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<AlertDetail | null>(null);
@@ -52,11 +62,15 @@ export default function Alerts() {
 
   async function load() {
     setLoading(true);
-    try { setAlerts(await listAlerts({ status: status || undefined, severity: sev || undefined })); }
+    try {
+      setAlerts(await listAlerts({
+        status: status || undefined, severity: sev || undefined, source: kind || undefined,
+      }));
+    }
     catch { toast("Impossible de charger les alertes", "error"); }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); setPage(1); }, [status, sev]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); setPage(1); }, [status, sev, kind]); // eslint-disable-line react-hooks/exhaustive-deps
   const paged = alerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   async function open(a: Alert) {
@@ -120,6 +134,11 @@ export default function Alerts() {
           <option value="">Toutes les gravités</option>
           {Object.keys(SEV_WORD).map((s) => <option key={s} value={s}>{SEV_WORD[s]}</option>)}
         </Select>
+        <Select value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: 240 }}>
+          <option value="">Tous les types d'alerte</option>
+          <option value="SCREENING">Vérification client</option>
+          <option value="KYT">Opération atypique</option>
+        </Select>
       </div>
 
       <Card pad0>
@@ -129,10 +148,13 @@ export default function Alerts() {
         ) : (
           <><div className="ds-table-wrap" style={{ border: "none" }}>
             <table className="ds-table">
-              <thead><tr><th>Gravité</th><th>Motif</th><th>Personne concernée</th><th>Statut</th><th>Détectée le</th><th></th></tr></thead>
+              <thead><tr><th>Type</th><th>Gravité</th><th>Motif</th><th>Concerné</th><th>Statut</th><th>Détectée le</th><th></th></tr></thead>
               <tbody>
-                {paged.map((al) => (
+                {paged.map((al) => {
+                  const k = kindOf(al.source);
+                  return (
                   <tr key={al.id} style={{ cursor: "pointer" }} onClick={() => open(al)}>
+                    <td><Badge tone={k.tone}>{k.icon} {k.label}</Badge></td>
                     <td><Badge tone={SEV_TONE[al.severity] || "neutral"}>{SEV_WORD[al.severity] || al.severity}</Badge></td>
                     <td style={{ fontWeight: 600 }}>{al.title}</td>
                     <td className="ds-small">{al.subject_label || al.subject_ref || "—"}</td>
@@ -140,7 +162,8 @@ export default function Alerts() {
                     <td className="ds-small ds-muted">{fmtDate(al.created_at)}</td>
                     <td><Button size="sm" variant="ghost" icon={<Eye size={14} />}>Ouvrir</Button></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
