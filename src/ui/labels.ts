@@ -15,6 +15,7 @@ export const NAV = {
   alerts: "Alertes à traiter",
   risk: "Niveau de risque & Règles",
   monitoring: "Surveillance des opérations",
+  beneficialOwners: "Bénéficiaires effectifs",
 };
 
 // Niveaux de risque : mot simple + couleur + intensité (0..3)

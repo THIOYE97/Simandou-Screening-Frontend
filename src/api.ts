@@ -700,3 +700,74 @@ export async function getMyPermissions(): Promise<MyPermissions> {
 }
 
 export default api;
+
+// ─────────────────────────────────────────────
+// Bénéficiaires effectifs
+// ─────────────────────────────────────────────
+export interface UboMember {
+  id: string;
+  parent_id?: string | null;
+  kind: "PERSON" | "ENTITY";
+  full_name: string;
+  nationality?: string | null;
+  country?: string | null;
+  date_of_birth?: string | null;
+  identifier?: string | null;
+  ownership_percent?: number | null;
+  /** Détention réelle après aplatissement de la chaîne (produit des %). */
+  effective_percent: number;
+  control_nature: string;
+  is_beneficial_owner: boolean;
+  match_score?: number | null;
+  is_pep: boolean;
+  screened_at?: string | null;
+  matches: Array<{ name?: string; source?: string | null; program?: string | null; score?: number; record_type?: string | null }>;
+}
+
+export interface UboDeclaration {
+  id: string;
+  company_name: string;
+  company_ref?: string | null;
+  company_country?: string | null;
+  notes?: string | null;
+  last_screened_at?: string | null;
+  created_at?: string | null;
+  members: UboMember[];
+}
+
+export interface UboScreenResult {
+  declaration_id: string;
+  company_name: string;
+  risk_class: string;
+  total_score: number;
+  triggered: Array<{ code: string; name: string; weight: number }>;
+  alerts_created: number;
+  members: UboMember[];
+}
+
+export async function listUboDeclarations(): Promise<UboDeclaration[]> {
+  const { data } = await api.get("/ubo/declarations");
+  return data;
+}
+export async function getUboDeclaration(id: string): Promise<UboDeclaration> {
+  const { data } = await api.get(`/ubo/declarations/${id}`);
+  return data;
+}
+export async function createUboDeclaration(payload: Record<string, any>): Promise<UboDeclaration> {
+  const { data } = await api.post("/ubo/declarations", payload);
+  return data;
+}
+export async function deleteUboDeclaration(id: string): Promise<void> {
+  await api.delete(`/ubo/declarations/${id}`);
+}
+export async function addUboMember(declarationId: string, payload: Record<string, any>): Promise<UboMember> {
+  const { data } = await api.post(`/ubo/declarations/${declarationId}/members`, payload);
+  return data;
+}
+export async function deleteUboMember(memberId: string): Promise<void> {
+  await api.delete(`/ubo/members/${memberId}`);
+}
+export async function screenUboDeclaration(id: string): Promise<UboScreenResult> {
+  const { data } = await api.post(`/ubo/declarations/${id}/screen`);
+  return data;
+}

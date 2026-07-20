@@ -71,6 +71,7 @@ export default function AppLayout() {
     { to: "/compliance", label: NAV.compliance, icon: LayoutDashboard },
     { to: "/alerts", label: NAV.alerts, icon: AlertTriangle, badge: openAlerts || undefined },
     { to: "/transactions", label: NAV.monitoring, icon: ArrowLeftRight },
+    { to: "/beneficial-owners", label: NAV.beneficialOwners, icon: Network },
     { to: "/watchlists", label: NAV.watchlists, icon: Radio },
     { to: "/risk-scoring", label: NAV.risk, icon: Gauge },
   ];
