@@ -783,3 +783,53 @@ export async function lookupUboDeclaration(params: { company_name?: string; comp
   const { data } = await api.get("/ubo/declarations/lookup", { params });
   return data;
 }
+
+export interface UboDocument {
+  id: string; declaration_id: string; member_id?: string | null;
+  doc_type: string; filename: string; mime_type?: string | null;
+  size_bytes?: number | null; notes?: string | null; uploaded_at?: string | null;
+}
+export interface UboEvent {
+  id: string; action: string; justification?: string | null;
+  actor_id?: string | null; created_at?: string | null;
+}
+
+export async function listUboDocuments(declarationId: string): Promise<UboDocument[]> {
+  const { data } = await api.get(`/ubo/declarations/${declarationId}/documents`);
+  return data;
+}
+export async function uploadUboDocument(
+  declarationId: string, file: File, doc_type: string, notes?: string,
+): Promise<UboDocument> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("doc_type", doc_type);
+  if (notes) fd.append("notes", notes);
+  const { data } = await api.post(`/ubo/declarations/${declarationId}/documents`, fd);
+  return data;
+}
+export async function deleteUboDocument(documentId: string): Promise<void> {
+  await api.delete(`/ubo/documents/${documentId}`);
+}
+/** Télécharge la pièce en réutilisant le jeton d'accès courant. */
+export function downloadUboDocument(documentId: string, filename: string) {
+  const token = getToken();
+  const url = `${(import.meta.env.VITE_API_URL as string) || ""}/ubo/documents/${documentId}/download`;
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then((r) => r.blob())
+    .then((b) => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(b);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+}
+export async function listUboEvents(declarationId: string): Promise<UboEvent[]> {
+  const { data } = await api.get(`/ubo/declarations/${declarationId}/events`);
+  return data;
+}
+export async function updateUboMember(memberId: string, payload: Record<string, any>): Promise<UboMember> {
+  const { data } = await api.patch(`/ubo/members/${memberId}`, payload);
+  return data;
+}

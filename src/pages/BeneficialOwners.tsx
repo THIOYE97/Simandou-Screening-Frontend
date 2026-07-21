@@ -3,17 +3,39 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Network, Plus, RefreshCw, Search, Trash2, ShieldAlert, ShieldCheck, Building2,
-  User, ChevronRight, CornerDownRight, Loader2, CheckCircle2,
+  User, ChevronRight, CornerDownRight, Loader2, CheckCircle2, Paperclip, Download,
+  History, Check,
 } from "lucide-react";
 import {
   listUboDeclarations, createUboDeclaration, deleteUboDeclaration,
-  addUboMember, deleteUboMember, screenUboDeclaration,
+  addUboMember, deleteUboMember, screenUboDeclaration, updateUboMember,
+  listUboDocuments, uploadUboDocument, deleteUboDocument, downloadUboDocument,
+  listUboEvents,
   type UboDeclaration, type UboMember, type UboScreenResult,
+  type UboDocument, type UboEvent,
 } from "../api";
 import {
   Button, Card, CardTitle, PageHeader, RiskBadge, Badge, Field, Input, Select,
   EmptyState, SkeletonRows, useUI, fmtDate,
 } from "../ui";
+
+const CONTROL_DOC_LABEL: Record<string, string> = {
+  STATUTS: "Statuts de la société",
+  REGISTRE_ACTIONNAIRES: "Registre des actionnaires",
+  PIECE_IDENTITE: "Pièce d'identité",
+  RCCM: "Extrait RCCM",
+  AUTRE: "Autre document",
+};
+
+const EVENT_LABEL: Record<string, string> = {
+  CREATION: "Déclaration créée",
+  MEMBRE_AJOUT: "Maillon ajouté",
+  MEMBRE_MODIF: "Maillon modifié",
+  MEMBRE_RETRAIT: "Maillon retiré",
+  DOC_AJOUT: "Pièce déposée",
+  DOC_RETRAIT: "Pièce retirée",
+  FILTRAGE: "Filtrage contre les listes",
+};
 
 const CONTROL_LABEL: Record<string, string> = {
   CAPITAL: "Détention du capital",
@@ -23,8 +45,13 @@ const CONTROL_LABEL: Record<string, string> = {
 };
 
 /** Un maillon de la chaîne, indenté selon sa profondeur. */
-function MemberRow({ m, depth, onDelete }: { m: UboMember; depth: number; onDelete: () => void }) {
+function MemberRow({ m, depth, onDelete, onPercent }: {
+  m: UboMember; depth: number; onDelete: () => void;
+  onPercent: (v: number) => void;
+}) {
   const matched = (m.matches?.length ?? 0) > 0;
+  const [pct, setPct] = useState(String(m.ownership_percent ?? ""));
+  const [editing, setEditing] = useState(false);
   return (
     <div style={{
       padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--r-md)",
@@ -46,6 +73,22 @@ function MemberRow({ m, depth, onDelete }: { m: UboMember; depth: number; onDele
           </div>
         </div>
         <div className="ds-row" style={{ gap: 8, flexShrink: 0 }}>
+          {/* Correction en place : sans cela, rectifier un pourcentage imposait
+              de supprimer le maillon et de le recréer — perdant au passage sa
+              place dans la chaîne et les pièces qui lui étaient rattachées. */}
+          {editing ? (
+            <div className="ds-row" style={{ gap: 4 }}>
+              <Input type="number" min={0} max={100} style={{ width: 66, textAlign: "center" }}
+                value={pct} autoFocus
+                onChange={(e) => setPct(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                onBlur={() => { setEditing(false); const v = Number(pct);
+                  if (!Number.isNaN(v) && v !== Number(m.ownership_percent ?? -1)) onPercent(v); }} />
+              <Check size={14} className="ds-muted" />
+            </div>
+          ) : (
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>Modifier %</Button>
+          )}
           {m.is_beneficial_owner && <Badge tone="info">Bénéficiaire effectif</Badge>}
           {m.screened_at && (matched
             ? <Badge tone="critical"><ShieldAlert size={13} /> {m.matches.length} correspondance(s)</Badge>
@@ -74,7 +117,9 @@ function MemberRow({ m, depth, onDelete }: { m: UboMember; depth: number; onDele
 }
 
 /** Rend la chaîne de détention en arbre (parent → enfants). */
-function Chain({ members, onDelete }: { members: UboMember[]; onDelete: (id: string) => void }) {
+function Chain({ members, onDelete, onPercent }: {
+  members: UboMember[]; onDelete: (id: string) => void; onPercent: (id: string, v: number) => void;
+}) {
   const rows: Array<{ m: UboMember; depth: number }> = [];
   const walk = (parent: string | null, depth: number) => {
     members.filter((m) => (m.parent_id ?? null) === parent).forEach((m) => {
@@ -84,7 +129,8 @@ function Chain({ members, onDelete }: { members: UboMember[]; onDelete: (id: str
   };
   walk(null, 0);
   return <>{rows.map(({ m, depth }) => (
-    <MemberRow key={m.id} m={m} depth={depth} onDelete={() => onDelete(m.id)} />
+    <MemberRow key={m.id} m={m} depth={depth} onDelete={() => onDelete(m.id)}
+      onPercent={(v) => onPercent(m.id, v)} />
   ))}</>;
 }
 
@@ -110,7 +156,16 @@ export default function BeneficialOwners() {
   const [mNat, setMNat] = useState("");
   const [mControl, setMControl] = useState("CAPITAL");
 
+  const [docs, setDocs] = useState<UboDocument[]>([]);
+  const [events, setEvents] = useState<UboEvent[]>([]);
+  const [docType, setDocType] = useState("STATUTS");
+
   const [params] = useSearchParams();
+
+  async function loadAnnexes(id: string) {
+    listUboDocuments(id).then(setDocs).catch(() => setDocs([]));
+    listUboEvents(id).then(setEvents).catch(() => setEvents([]));
+  }
 
   async function load() {
     setLoading(true);
@@ -144,7 +199,37 @@ export default function BeneficialOwners() {
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function open(d: UboDeclaration) { setSelected(d); setResult(null); }
+  async function open(d: UboDeclaration) { setSelected(d); setResult(null); loadAnnexes(d.id); }
+
+  /** Corrige le pourcentage d'un maillon sans le supprimer ni le recréer. */
+  async function setPercent(memberId: string, value: number) {
+    if (!selected) return;
+    try {
+      await updateUboMember(memberId, { ownership_percent: value });
+      const fresh = (await listUboDeclarations()).find((x) => x.id === selected.id);
+      if (fresh) setSelected(fresh);
+      await load(); loadAnnexes(selected.id);
+      toast("Détention mise à jour");
+    } catch { toast("Modification impossible", "error"); }
+  }
+
+  async function onUpload(file: File) {
+    if (!selected) return;
+    try {
+      await uploadUboDocument(selected.id, file, docType);
+      loadAnnexes(selected.id);
+      toast("Pièce enregistrée");
+    } catch (e: any) {
+      toast(e?.response?.data?.detail || "Dépôt impossible", "error");
+    }
+  }
+
+  async function removeDoc(id: string) {
+    if (!selected) return;
+    if (!(await confirm({ title: "Retirer cette pièce ?", message: "Le retrait sera tracé dans l'historique.", confirmLabel: "Retirer" }))) return;
+    try { await deleteUboDocument(id); loadAnnexes(selected.id); toast("Pièce retirée"); }
+    catch { toast("Retrait impossible", "error"); }
+  }
 
   async function createDecl() {
     if (!coName.trim()) { toast("Indiquez la dénomination", "error"); return; }
@@ -278,7 +363,7 @@ export default function BeneficialOwners() {
               {selected.members.length === 0
                 ? <EmptyState icon={<Network size={22} />} title="Chaîne vide"
                     subtitle="Ajoutez les détenteurs directs, puis leurs propres détenteurs pour reconstituer la chaîne." />
-                : <Chain members={selected.members} onDelete={removeMember} />}
+                : <Chain members={selected.members} onDelete={removeMember} onPercent={setPercent} />}
 
               <div className="ds-row ds-wrap ds-mt-16" style={{ gap: 10 }}>
                 <Button icon={screening ? <Loader2 size={16} style={{ animation: "ds-spin 1.2s linear infinite" }} /> : <Search size={16} />}
@@ -316,6 +401,65 @@ export default function BeneficialOwners() {
                 </div>
               </Card>
             )}
+
+            {/* Pièces justificatives */}
+            <Card>
+              <CardTitle sub="Statuts, registre des actionnaires, pièces d'identité. Sans pièce, une déclaration reste invérifiable.">
+                <Paperclip size={18} /> Pièces justificatives ({docs.length})
+              </CardTitle>
+              {docs.length === 0
+                ? <div className="ds-small ds-muted">Aucune pièce déposée.</div>
+                : docs.map((d) => (
+                  <div key={d.id} className="ds-between" style={{
+                    padding: "9px 12px", border: "1px solid var(--border)",
+                    borderRadius: "var(--r-md)", marginBottom: 8, gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 620, fontSize: 13.5 }}>{d.filename}</div>
+                      <div className="ds-small ds-muted">
+                        {CONTROL_DOC_LABEL[d.doc_type] || d.doc_type}
+                        {d.size_bytes ? ` · ${Math.round(d.size_bytes / 1024)} Ko` : ""}
+                        {d.uploaded_at ? ` · ${fmtDate(d.uploaded_at)}` : ""}
+                      </div>
+                    </div>
+                    <div className="ds-row" style={{ gap: 6, flexShrink: 0 }}>
+                      <Button size="sm" variant="ghost" icon={<Download size={14} />}
+                        onClick={() => downloadUboDocument(d.id, d.filename)} />
+                      <Button size="sm" variant="ghost" icon={<Trash2 size={14} />}
+                        onClick={() => removeDoc(d.id)} />
+                    </div>
+                  </div>
+                ))}
+              <div className="ds-row ds-wrap ds-mt-16" style={{ gap: 10 }}>
+                <Select value={docType} onChange={(e) => setDocType(e.target.value)} style={{ width: 230 }}>
+                  {Object.keys(CONTROL_DOC_LABEL).map((k) => (
+                    <option key={k} value={k}>{CONTROL_DOC_LABEL[k]}</option>
+                  ))}
+                </Select>
+                <label className="ds-btn ds-btn--secondary" style={{ cursor: "pointer" }}>
+                  <Paperclip size={16} /> Déposer une pièce
+                  <input type="file" style={{ display: "none" }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = ""; }} />
+                </label>
+              </div>
+            </Card>
+
+            {/* Historique */}
+            <Card>
+              <CardTitle sub="Qui a déclaré ou modifié quoi, et quand.">
+                <History size={18} /> Historique
+              </CardTitle>
+              {events.length === 0
+                ? <div className="ds-small ds-muted">Aucun événement.</div>
+                : events.map((e) => (
+                  <div key={e.id} className="ds-reason" style={{ marginBottom: 6 }}>
+                    <b>{EVENT_LABEL[e.action] || e.action}</b>
+                    {e.justification ? <span className="ds-muted"> — {e.justification}</span> : null}
+                    <span className="ds-muted ds-small" style={{ marginLeft: "auto" }}>
+                      {e.created_at ? fmtDate(e.created_at) : ""}
+                    </span>
+                  </div>
+                ))}
+            </Card>
 
             {/* Ajout d'un maillon */}
             <Card>
