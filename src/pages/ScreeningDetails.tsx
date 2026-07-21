@@ -7,7 +7,8 @@ import {
   Network, AlertTriangle, Plus,
 } from "lucide-react";
 import { downloadScreeningExportPdf, getScreeningDetails, getComplianceEvents, lookupUboDeclaration,
-  type ComplianceEvent, type UboLookup } from "../api";
+  getCompanyOwnership,
+  type ComplianceEvent, type UboLookup, type CompanyOwnership } from "../api";
 import {
   Button, Card, CardTitle, PageHeader, RiskBadge, Badge,
   Drawer, KV, AuditTimeline, EmptyState, SkeletonRows, StatCard, useUI, fmtDate,
@@ -51,6 +52,7 @@ export default function ScreeningDetails() {
   const [selected, setSelected] = useState<AnyObj | null>(null);
   const [events, setEvents] = useState<ComplianceEvent[]>([]);
   const [ubo, setUbo] = useState<UboLookup | null>(null);
+  const [own, setOwn] = useState<CompanyOwnership | null>(null);
 
   async function load() {
     if (!id) return;
@@ -80,6 +82,8 @@ export default function ScreeningDetails() {
     lookupUboDeclaration({ company_name, company_ref: payload.registration_number || undefined })
       .then(setUbo)
       .catch(() => setUbo({ found: false, declaration: null }));
+    // Détention capitalistique publique : distincte du registre interne.
+    getCompanyOwnership(company_name).then(setOwn).catch(() => setOwn(null));
   }, [isCompany, request?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const matches: AnyObj[] = Array.isArray(data?.matches) ? data.matches : [];
   const decisionLatest = data?.decision_latest ?? null;
@@ -223,7 +227,7 @@ export default function ScreeningDetails() {
 
               {isCompany && (
                 <Card>
-                  <CardTitle sub="Obligation LBC/FT : les bénéficiaires effectifs d'une personne morale doivent être identifiés.">
+                  <CardTitle sub="Déclarés par l'assujetti, pièces à l'appui. Obligation LBC/FT : les bénéficiaires effectifs d'une personne morale doivent être identifiés.">
                     <Network size={18} /> Bénéficiaires effectifs
                   </CardTitle>
                   {ubo === null ? (
@@ -261,6 +265,35 @@ export default function ScreeningDetails() {
                         }))}>
                         Déclarer les bénéficiaires effectifs
                       </Button>
+                    </>
+                  )}
+                </Card>
+              )}
+
+              {isCompany && own && (
+                <Card>
+                  <CardTitle sub="Référentiel LEI (GLEIF), source publique. Porte sur les personnes morales — jamais sur la personne physique finale.">
+                    <Landmark size={18} /> Détention capitalistique connue
+                  </CardTitle>
+                  {!own.found ? (
+                    <div className="ds-small ds-muted">
+                      Cette société ne figure pas au référentiel LEI.
+                    </div>
+                  ) : (
+                    <>
+                      <dl className="ds-kv">
+                        <dt>Identifiant LEI</dt><dd>{own.entity?.lei}</dd>
+                        <dt>Dénomination</dt><dd>{own.entity?.name}</dd>
+                        <dt>Pays</dt><dd>{own.entity?.country || "—"}</dd>
+                        <dt>Mère directe</dt><dd>{own.direct_parent?.name || "—"}</dd>
+                        <dt>Mère ultime</dt><dd>{own.ultimate_parent?.name || "—"}</dd>
+                        <dt>Filiales connues</dt><dd>{own.children_count}</dd>
+                      </dl>
+                      {own.note && (
+                        <div className="ds-small ds-muted ds-mt-16" style={{ lineHeight: 1.5 }}>
+                          {own.note}
+                        </div>
+                      )}
                     </>
                   )}
                 </Card>

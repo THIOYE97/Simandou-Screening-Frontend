@@ -833,3 +833,16 @@ export async function updateUboMember(memberId: string, payload: Record<string, 
   const { data } = await api.patch(`/ubo/members/${memberId}`, payload);
   return data;
 }
+
+export interface CompanyOwnership {
+  found: boolean;
+  entity: { lei: string; name: string; country?: string | null; registration_status?: string | null } | null;
+  direct_parent: { lei: string; name: string; country?: string | null } | null;
+  ultimate_parent: { lei: string; name: string; country?: string | null } | null;
+  children_count: number;
+  note?: string | null;
+}
+export async function getCompanyOwnership(company_name: string): Promise<CompanyOwnership> {
+  const { data } = await api.get("/ubo/ownership", { params: { company_name } });
+  return data;
+}
