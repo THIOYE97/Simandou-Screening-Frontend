@@ -4,12 +4,13 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import {
   ClipboardCheck, RefreshCw, Download, ArrowLeft, CheckCircle2,
   ListChecks, Users, Landmark, ShieldAlert, ChevronRight, Eye, ExternalLink, Scale,
-  Network, AlertTriangle, Plus, Newspaper, Search,
+  Network, AlertTriangle, Plus, Newspaper, Search, Waves,
 } from "lucide-react";
 import { downloadScreeningExportPdf, getScreeningDetails, getComplianceEvents, lookupUboDeclaration,
   getCompanyOwnership, getAdverseMediaPress, startAdverseMediaPress,
+  getOffshoreLinked,
   type ComplianceEvent, type UboLookup, type CompanyOwnership,
-  type PressResult } from "../api";
+  type PressResult, type OffshoreLinked } from "../api";
 import {
   Button, Card, CardTitle, PageHeader, RiskBadge, Badge,
   Drawer, KV, AuditTimeline, EmptyState, SkeletonRows, StatCard, useUI, fmtDate,
@@ -78,6 +79,9 @@ export default function ScreeningDetails() {
   // saturerait et ralentirait l'écran pour une information d'appoint.
   const [press, setPress] = useState<PressResult | null>(null);
   const [pressBusy, setPressBusy] = useState(false);
+  // Rattachements offshore : utiles dans les deux sens, d'où l'absence de
+  // condition sur la nature du sujet.
+  const [offs, setOffs] = useState<OffshoreLinked | null>(null);
 
   async function load() {
     if (!id) return;
@@ -136,6 +140,17 @@ export default function ScreeningDetails() {
     getAdverseMediaPress(String(company))
       .then((r) => { if (r.status !== "IDLE") setPress(r); })
       .catch(() => { /* la presse est un appoint : son absence ne dit rien */ });
+  }, [isCompany, request?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const p = request?.request_payload ?? {};
+    const sujet = isCompany
+      ? (p.company_name || p.meta?.company_name || p.name)
+      : ([p.first_name, p.last_name].filter(Boolean).join(" ").trim() || p.name);
+    if (!sujet) return;
+    getOffshoreLinked(String(sujet), isCompany)
+      .then(setOffs)
+      .catch(() => setOffs(null));
   }, [isCompany, request?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runPress() {
@@ -337,6 +352,67 @@ export default function ScreeningDetails() {
                         Déclarer les bénéficiaires effectifs
                       </Button>
                     </>
+                  )}
+                </Card>
+              )}
+
+              {/* Rattachements offshore — présentés comme des pistes, jamais
+                  comme une détention établie : données arrêtées en 2020,
+                  rapprochées par le nom, et l'ICIJ n'est pas un registre. */}
+              {offs?.subject_found && (
+                <Card>
+                  <CardTitle sub={offs.caveat}>
+                    <Waves size={18} /> {isCompany
+                      ? "Détenteurs potentiels (fuites offshore)"
+                      : "Sociétés offshore rattachées"}
+                  </CardTitle>
+
+                  <div className="ds-row ds-small ds-wrap" style={{ gap: 8, marginBottom: 12 }}>
+                    <Badge tone="neutral">
+                      {offs.subject?.name} · {offs.subject?.score}% de ressemblance
+                    </Badge>
+                    {offs.subject?.investigation && (
+                      <span className="ds-muted">{offs.subject.investigation}</span>
+                    )}
+                  </div>
+
+                  {offs.parties.length === 0 ? (
+                    <div className="ds-small ds-muted">
+                      {isCompany
+                        ? "Cette société apparaît dans les fuites, mais aucun détenteur ne lui est rattaché."
+                        : "Cette personne apparaît dans les fuites, mais aucune société ne lui est rattachée."}
+                    </div>
+                  ) : (
+                    <div className="ds-table-wrap">
+                      <table className="ds-table">
+                        <thead><tr>
+                          <th>{isCompany ? "Personne" : "Société"}</th>
+                          <th>Rôle</th><th>Juridiction</th><th>Enquête</th>
+                        </tr></thead>
+                        <tbody>
+                          {offs.parties.map((p) => (
+                            <tr key={`${p.node_id}-${p.role_raw}`}>
+                              <td style={{ fontWeight: 650 }}>{p.name}</td>
+                              <td>
+                                <Badge tone={p.role_class === "BENEFICIAL_OWNER" ? "critical"
+                                          : p.role_class === "SHAREHOLDER" ? "high" : "neutral"}>
+                                  {p.role_label}
+                                </Badge>
+                                {p.role_raw && (
+                                  <div className="ds-small ds-muted" style={{ marginTop: 2 }}>{p.role_raw}</div>
+                                )}
+                              </td>
+                              <td className="ds-small ds-muted">{p.jurisdiction || p.countries || "\u2014"}</td>
+                              <td className="ds-small ds-muted">{p.source || "\u2014"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {offs.attribution && (
+                    <div className="ds-small ds-muted ds-mt-16">{offs.attribution}</div>
                   )}
                 </Card>
               )}

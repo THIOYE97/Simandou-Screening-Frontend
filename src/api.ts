@@ -251,6 +251,30 @@ export async function getScreeningDetails(requestId: string): Promise<any> {
   return data;
 }
 
+// ── Rattachements offshore (ICIJ) ───────────────────────────────────────────
+export type OffshoreParty = {
+  node_id: string; name: string; kind: string;
+  countries?: string | null; jurisdiction?: string | null;
+  role_raw?: string | null; role_class: string; role_label: string;
+  source?: string | null;
+};
+export type OffshoreLinked = {
+  subject_found: boolean;
+  subject: { name: string; jurisdiction?: string | null; investigation?: string | null;
+             score: number; status?: string | null } | null;
+  parties: OffshoreParty[];
+  attribution?: string; caveat?: string;
+};
+
+/**
+ * Acteurs rattachés à un sujet dans les fuites offshore.
+ * Personne morale → ceux qui la détiennent ; personne physique → ses sociétés.
+ */
+export async function getOffshoreLinked(name: string, isCompany: boolean): Promise<OffshoreLinked> {
+  const { data } = await api.get("/offshore/linked", { params: { name, is_company: isCompany } });
+  return data;
+}
+
 // ── Médias défavorables ──────────────────────────────────────────────────────
 export type PressArticle = {
   title: string; url?: string | null; domain?: string | null;
