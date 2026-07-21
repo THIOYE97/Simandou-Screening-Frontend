@@ -18,6 +18,7 @@ export const NAV = {
   beneficialOwners: "Bénéficiaires effectifs",
   offshore: "Fuites offshore",
   adverseMedia: "Médias défavorables",
+  blacklist: "Liste noire",
 };
 
 // Niveaux de risque : mot simple + couleur + intensité (0..3)

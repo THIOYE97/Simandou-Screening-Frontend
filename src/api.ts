@@ -275,6 +275,50 @@ export async function getOffshoreLinked(name: string, isCompany: boolean): Promi
   return data;
 }
 
+// ── Liste noire / interdits bancaires (BCRG) ────────────────────────────────
+export type BlacklistState = {
+  source_id: number | null; actifs: number; leves: number; total: number;
+};
+export type BlacklistRecord = {
+  source_ref: string; primary_name: string; entity_type: string;
+  motif?: string | null; date_decision?: string | null; date_levee?: string | null;
+};
+export type BlacklistImport = {
+  dry_run?: boolean;
+  fresh?: number; existing?: number;
+  would_create?: number; would_delist?: number;
+  created?: number; updated?: number; relisted?: number; delisted?: number;
+};
+
+export async function getBlacklistState(): Promise<BlacklistState> {
+  const { data } = await api.get("/blacklist/state");
+  return data;
+}
+
+export async function listBlacklist(): Promise<BlacklistRecord[]> {
+  const { data } = await api.get("/blacklist/records");
+  return data.records ?? [];
+}
+
+/** dryRun = simulation : mesure l'impact sans rien écrire. */
+export async function importBlacklist(file: File, dryRun: boolean): Promise<BlacklistImport> {
+  const fd = new FormData();
+  fd.append("fichier", file);
+  const { data } = await api.post("/blacklist/import", fd, {
+    params: { dry_run: dryRun },
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function downloadBlacklistTemplate() {
+  const { data } = await api.get("/blacklist/template.csv", { responseType: "blob" });
+  const url = URL.createObjectURL(data as Blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "modele-liste-noire-bcrg.csv";
+  a.click(); URL.revokeObjectURL(url);
+}
+
 // ── Base BCRG des médias défavorables ───────────────────────────────────────
 export type AdverseRecord = {
   id: string; entity_name: string; category: string;
