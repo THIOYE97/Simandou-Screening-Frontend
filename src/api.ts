@@ -275,6 +275,51 @@ export async function getOffshoreLinked(name: string, isCompany: boolean): Promi
   return data;
 }
 
+// ── Base BCRG des médias défavorables ───────────────────────────────────────
+export type AdverseRecord = {
+  id: string; entity_name: string; category: string;
+  source?: string | null; url?: string | null; summary?: string | null;
+  active: boolean; created_at: string;
+};
+
+export async function listAdverseRecords(): Promise<AdverseRecord[]> {
+  const { data } = await api.get("/adverse-media/records");
+  return data;
+}
+
+export async function addAdverseRecord(payload: {
+  entity_name: string; category: string;
+  source?: string; url?: string; summary?: string;
+}): Promise<AdverseRecord> {
+  const { data } = await api.post("/adverse-media/records", payload);
+  return data;
+}
+
+/** Bascule actif/inactif — on ne supprime jamais un signalement. */
+export async function toggleAdverseRecord(id: string, actif: boolean) {
+  const { data } = await api.patch(`/adverse-media/records/${id}`, null,
+                                   { params: { actif } });
+  return data;
+}
+
+export async function importAdverseCsv(file: File): Promise<{
+  crees: number; ignores: number; erreurs: string[];
+}> {
+  const fd = new FormData();
+  fd.append("fichier", file);
+  const { data } = await api.post("/adverse-media/import", fd,
+                                  { headers: { "Content-Type": "multipart/form-data" } });
+  return data;
+}
+
+export async function downloadAdverseTemplate() {
+  const { data } = await api.get("/adverse-media/template.csv", { responseType: "blob" });
+  const url = URL.createObjectURL(data as Blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "modele-medias-defavorables.csv";
+  a.click(); URL.revokeObjectURL(url);
+}
+
 // ── Médias défavorables ──────────────────────────────────────────────────────
 export type PressArticle = {
   title: string; url?: string | null; domain?: string | null;

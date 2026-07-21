@@ -17,6 +17,7 @@ export const NAV = {
   monitoring: "Surveillance des opérations",
   beneficialOwners: "Bénéficiaires effectifs",
   offshore: "Fuites offshore",
+  adverseMedia: "Médias défavorables",
 };
 
 // Niveaux de risque : mot simple + couleur + intensité (0..3)
