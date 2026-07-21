@@ -241,7 +241,7 @@ export default function ScreeningDetails() {
                       </dl>
                       <Button className="ds-mt-16" variant="secondary" size="sm"
                         icon={<ExternalLink size={14} />}
-                        onClick={() => nav("/beneficial-owners")}>
+                        onClick={() => nav("/beneficial-owners?open=" + (ubo.declaration?.id || ""))}>
                         Ouvrir la chaîne de détention
                       </Button>
                     </>
@@ -254,7 +254,11 @@ export default function ScreeningDetails() {
                         Vérification incomplète — aucun bénéficiaire effectif déclaré pour cette personne morale.
                       </div>
                       <Button className="ds-mt-16" size="sm" icon={<Plus size={14} />}
-                        onClick={() => nav("/beneficial-owners")}>
+                        onClick={() => nav("/beneficial-owners?" + new URLSearchParams({
+                          company: String(payload.company_name || payload.meta?.company_name || payload.name || name),
+                          ref: String(payload.registration_number || ""),
+                          country: String(payload.country || payload.meta?.country || ""),
+                        }))}>
                         Déclarer les bénéficiaires effectifs
                       </Button>
                     </>

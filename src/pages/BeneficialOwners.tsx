@@ -1,5 +1,6 @@
 // Bénéficiaires effectifs — registre interne, chaîne de détention et filtrage.
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Network, Plus, RefreshCw, Search, Trash2, ShieldAlert, ShieldCheck, Building2,
   User, ChevronRight, CornerDownRight, Loader2, CheckCircle2,
@@ -109,13 +110,39 @@ export default function BeneficialOwners() {
   const [mNat, setMNat] = useState("");
   const [mControl, setMControl] = useState("CAPITAL");
 
+  const [params] = useSearchParams();
+
   async function load() {
     setLoading(true);
-    try { setDecls(await listUboDeclarations()); }
-    catch { toast("Impossible de charger les déclarations", "error"); }
+    try { return await (async () => { const d = await listUboDeclarations(); setDecls(d); return d; })(); }
+    catch { toast("Impossible de charger les déclarations", "error"); return []; }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Arrivée depuis la vérification d'une personne morale : on reprend la
+  // société pour éviter une ressaisie — une différence d'orthographe suffirait
+  // à empêcher tout rapprochement ultérieur entre le dossier et la déclaration.
+  useEffect(() => {
+    (async () => {
+      const list = await load();
+      const openId = params.get("open");
+      if (openId) {
+        const found = list.find((d) => d.id === openId);
+        if (found) { setSelected(found); return; }
+      }
+      const company = params.get("company");
+      if (company) {
+        const existing = list.find(
+          (d) => d.company_name.trim().toLowerCase() === company.trim().toLowerCase(),
+        );
+        if (existing) { setSelected(existing); return; }
+        setCoName(company);
+        setCoRef(params.get("ref") || "");
+        setCoCountry(params.get("country") || "");
+        setShowNew(true);
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function open(d: UboDeclaration) { setSelected(d); setResult(null); }
 

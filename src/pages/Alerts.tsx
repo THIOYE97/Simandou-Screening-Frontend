@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle, RefreshCw, Wand2, CheckCircle2, ArrowRight, Eye, ShieldX,
-  User, ArrowLeftRight, ListChecks, Scale, UserCheck,
+  User, ArrowLeftRight, ListChecks, Scale, UserCheck, Network,
 } from "lucide-react";
 import {
   listAlerts, updateAlertStatus, seedAlertRules, getAlertDetail,
@@ -35,6 +35,7 @@ function kindOf(source?: string | null) {
   const s = String(source || "").toUpperCase();
   if (s === "KYT") return { label: "Opération atypique", icon: <ArrowLeftRight size={13} />, tone: "medium" as const };
   if (s === "SCREENING") return { label: "Vérification client", icon: <User size={13} />, tone: "info" as const };
+  if (s === "UBO") return { label: "Bénéficiaire effectif", icon: <Network size={13} />, tone: "high" as const };
   return { label: "Évaluation", icon: <Scale size={13} />, tone: "neutral" as const };
 }
 
@@ -127,6 +128,7 @@ export default function Alerts() {
           <option value="">Tous les types d'alerte</option>
           <option value="SCREENING">Vérification client</option>
           <option value="KYT">Opération atypique</option>
+          <option value="UBO">Bénéficiaire effectif</option>
         </Select>
       </div>
 
