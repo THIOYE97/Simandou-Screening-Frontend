@@ -846,3 +846,30 @@ export async function getCompanyOwnership(company_name: string): Promise<Company
   const { data } = await api.get("/ubo/ownership", { params: { company_name } });
   return data;
 }
+
+// ─────────────────────────────────────────────
+// Fuites offshore (ICIJ) — consultation à la demande
+// ─────────────────────────────────────────────
+export interface OffshoreHit {
+  node_id: string; kind: "ENTITY" | "OFFICER" | "INTERMEDIARY";
+  name: string; countries?: string | null; jurisdiction?: string | null;
+  investigation?: string | null; incorporation_date?: string | null;
+  status?: string | null; score: number;
+}
+export interface OffshoreSearchResp {
+  results: OffshoreHit[];
+  attribution: string;
+  caveat: string;
+}
+export interface OffshoreStats {
+  total: number; by_kind: Record<string, number>; attribution: string;
+}
+
+export async function searchOffshore(q: string, kind?: string): Promise<OffshoreSearchResp> {
+  const { data } = await api.get("/offshore/search", { params: { q, kind, limit: 50 } });
+  return data;
+}
+export async function getOffshoreStats(): Promise<OffshoreStats> {
+  const { data } = await api.get("/offshore/stats");
+  return data;
+}

@@ -3,7 +3,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Home, UserPlus, ClipboardList, Radio, FileBarChart, Settings2, Banknote,
-  LayoutDashboard, AlertTriangle, Gauge, ArrowLeftRight, Building2, Network,
+  LayoutDashboard, AlertTriangle, Gauge, ArrowLeftRight, Building2, Network, Waves,
   LogOut, Moon, Sun, Menu, ShieldCheck,
 } from "lucide-react";
 import { getToken, clearToken } from "../auth";
@@ -24,6 +24,7 @@ const TITLES: Record<string, string> = {
   "/dashboard": NAV.home, "/analyst": NAV.verify, "/verify-transaction": NAV.verifyTxn,
   "/screenings": NAV.verifications, "/watchlists": NAV.watchlists, "/reports": NAV.reports, "/settings": NAV.settings,
   "/compliance": NAV.compliance, "/alerts": NAV.alerts, "/risk-scoring": NAV.risk, "/transactions": NAV.monitoring,
+  "/beneficial-owners": NAV.beneficialOwners, "/offshore": NAV.offshore,
 };
 
 export default function AppLayout() {
@@ -72,6 +73,7 @@ export default function AppLayout() {
     { to: "/alerts", label: NAV.alerts, icon: AlertTriangle, badge: openAlerts || undefined },
     { to: "/transactions", label: NAV.monitoring, icon: ArrowLeftRight },
     { to: "/beneficial-owners", label: NAV.beneficialOwners, icon: Network },
+    { to: "/offshore", label: NAV.offshore, icon: Waves },
     { to: "/watchlists", label: NAV.watchlists, icon: Radio },
     { to: "/risk-scoring", label: NAV.risk, icon: Gauge },
   ];

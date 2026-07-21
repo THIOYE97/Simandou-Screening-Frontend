@@ -8,6 +8,7 @@ import Login            from "./pages/Login";
 import Dashboard        from "./pages/Dashboard";
 import AnalystHome      from "./pages/AnalystHome";
 import BeneficialOwners from "./pages/BeneficialOwners";
+import Offshore from "./pages/Offshore";
 import ScreeningsList   from "./pages/ScreeningsList";
 import ScreeningDetails from "./pages/ScreeningDetails";
 import Watchlists       from "./pages/Watchlists";
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/alerts"         element={<Alerts />} />
           <Route path="/risk-scoring"   element={<RiskScoring />} />
           <Route path="/beneficial-owners" element={<BeneficialOwners />} />
+          <Route path="/offshore" element={<Offshore />} />
           <Route path="/transactions"   element={<Transactions />} />
 
         </Route>
