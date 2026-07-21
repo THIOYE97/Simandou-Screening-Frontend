@@ -7,7 +7,7 @@ import {
   Network, AlertTriangle, Plus, Newspaper, Search,
 } from "lucide-react";
 import { downloadScreeningExportPdf, getScreeningDetails, getComplianceEvents, lookupUboDeclaration,
-  getCompanyOwnership, searchAdverseMediaPress,
+  getCompanyOwnership, getAdverseMediaPress, startAdverseMediaPress,
   type ComplianceEvent, type UboLookup, type CompanyOwnership,
   type PressResult } from "../api";
 import {
@@ -123,16 +123,44 @@ export default function ScreeningDetails() {
   const entities = new Set(sorted.map((m) => m.entity_id)).size;
   const name = displayName(data);
 
-  async function runPress() {
+  function companyName(): string | null {
     const p = request?.request_payload ?? {};
-    const company = p.company_name || p.meta?.company_name || p.name;
+    return p.company_name || p.meta?.company_name || p.name || null;
+  }
+
+  // Un résultat déjà en cache s'affiche sans rien redemander à la source.
+  useEffect(() => {
+    if (!isCompany) return;
+    const company = companyName();
+    if (!company) return;
+    getAdverseMediaPress(String(company))
+      .then((r) => { if (r.status !== "IDLE") setPress(r); })
+      .catch(() => { /* la presse est un appoint : son absence ne dit rien */ });
+  }, [isCompany, request?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function runPress() {
+    const company = companyName();
     if (!company) { toast("Dénomination sociale absente du dossier", "error"); return; }
     setPressBusy(true);
     try {
-      setPress(await searchAdverseMediaPress(String(company)));
+      let r = await startAdverseMediaPress(String(company));
+      setPress(r);
+      // La recherche se poursuit côté serveur : on sonde jusqu'au résultat.
+      // Plafond à 90 s — au-delà, mieux vaut rendre la main que faire tourner
+      // l'écran indéfiniment.
+      const debut = Date.now();
+      while (r.status === "PENDING" && Date.now() - debut < 90_000) {
+        await new Promise((ok) => setTimeout(ok, 3000));
+        r = await getAdverseMediaPress(String(company));
+        setPress(r);
+      }
+      if (r.status === "PENDING") {
+        setPress({ ...r, status: "ERROR",
+                   error: "La recherche prend plus de temps que prévu ; réessayez dans un instant." });
+      }
     } catch {
-      setPress({ name: String(company), articles: [], attribution: "",
-                 cached: false, error: "Recherche de presse indisponible." });
+      setPress({ status: "ERROR", articles: [], attribution: "",
+                 error: "Recherche de presse indisponible." });
     } finally {
       setPressBusy(false);
     }
@@ -364,14 +392,20 @@ export default function ScreeningDetails() {
                       </span>
                       <Button variant="secondary" icon={<Search size={15} />} disabled={pressBusy}
                         onClick={runPress}>
-                        {pressBusy ? "Recherche…" : press ? "Relancer" : "Rechercher dans la presse"}
+                        {pressBusy ? "Recherche en cours…" : press?.status === "DONE" ? "Relancer" : "Rechercher dans la presse"}
                       </Button>
                     </div>
 
-                    {press?.error && (
+                    {pressBusy && (
+                      <div className="ds-small ds-muted ds-mt-16">
+                        Interrogation de la presse mondiale… La source limite ses requêtes,
+                        cela peut prendre jusqu'à une minute.
+                      </div>
+                    )}
+                    {!pressBusy && press?.error && (
                       <div className="ds-small ds-muted ds-mt-16">{press.error}</div>
                     )}
-                    {press && !press.error && press.articles.length === 0 && (
+                    {!pressBusy && press?.status === "DONE" && press.articles.length === 0 && (
                       <div className="ds-small ds-muted ds-mt-16">
                         Aucun article défavorable trouvé sur les 24 derniers mois.
                       </div>

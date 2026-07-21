@@ -257,13 +257,23 @@ export type PressArticle = {
   language?: string | null; seen_at?: string | null;
 };
 export type PressResult = {
-  name: string; articles: PressArticle[]; attribution: string;
-  cached: boolean; error: string | null;
+  /** IDLE = jamais cherché · PENDING = en cours · DONE · ERROR */
+  status: "IDLE" | "PENDING" | "DONE" | "ERROR";
+  articles: PressArticle[]; attribution: string; error: string | null;
 };
 
-/** Pistes de presse pour une personne morale — consultation à la demande. */
-export async function searchAdverseMediaPress(name: string, months = 24): Promise<PressResult> {
-  const { data } = await api.get("/adverse-media/press", { params: { name, months } });
+/** État de la recherche — sondé jusqu'à DONE ou ERROR. Ne déclenche rien. */
+export async function getAdverseMediaPress(name: string): Promise<PressResult> {
+  const { data } = await api.get("/adverse-media/press", { params: { name } });
+  return data;
+}
+
+/**
+ * Déclenche la recherche et rend la main aussitôt : la source refuse environ
+ * deux requêtes sur trois et chaque tentative dure jusqu'à une minute.
+ */
+export async function startAdverseMediaPress(name: string): Promise<PressResult> {
+  const { data } = await api.post("/adverse-media/press", null, { params: { name } });
   return data;
 }
 
