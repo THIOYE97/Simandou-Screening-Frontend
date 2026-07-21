@@ -251,6 +251,22 @@ export async function getScreeningDetails(requestId: string): Promise<any> {
   return data;
 }
 
+// ── Médias défavorables ──────────────────────────────────────────────────────
+export type PressArticle = {
+  title: string; url?: string | null; domain?: string | null;
+  language?: string | null; seen_at?: string | null;
+};
+export type PressResult = {
+  name: string; articles: PressArticle[]; attribution: string;
+  cached: boolean; error: string | null;
+};
+
+/** Pistes de presse pour une personne morale — consultation à la demande. */
+export async function searchAdverseMediaPress(name: string, months = 24): Promise<PressResult> {
+  const { data } = await api.get("/adverse-media/press", { params: { name, months } });
+  return data;
+}
+
 export async function setScreeningDecision(
   requestId: string,
   decision: "PASS" | "BLOCK",

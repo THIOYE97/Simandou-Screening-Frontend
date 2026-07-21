@@ -4,17 +4,37 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import {
   ClipboardCheck, RefreshCw, Download, ArrowLeft, CheckCircle2,
   ListChecks, Users, Landmark, ShieldAlert, ChevronRight, Eye, ExternalLink, Scale,
-  Network, AlertTriangle, Plus,
+  Network, AlertTriangle, Plus, Newspaper, Search,
 } from "lucide-react";
 import { downloadScreeningExportPdf, getScreeningDetails, getComplianceEvents, lookupUboDeclaration,
-  getCompanyOwnership,
-  type ComplianceEvent, type UboLookup, type CompanyOwnership } from "../api";
+  getCompanyOwnership, searchAdverseMediaPress,
+  type ComplianceEvent, type UboLookup, type CompanyOwnership,
+  type PressResult } from "../api";
 import {
   Button, Card, CardTitle, PageHeader, RiskBadge, Badge,
   Drawer, KV, AuditTimeline, EmptyState, SkeletonRows, StatCard, useUI, fmtDate,
 } from "../ui";
 
 type AnyObj = Record<string, any>;
+
+// Libellés métier des catégories de signalement : « MONEY_LAUNDERING » ne se
+// lit pas dans un dossier de conformité.
+const AM_CATEGORY: Record<string, string> = {
+  FRAUD: "Fraude",
+  CORRUPTION: "Corruption",
+  MONEY_LAUNDERING: "Blanchiment",
+  TERRORISM: "Financement du terrorisme",
+  TRAFFICKING: "Trafic",
+  SANCTIONS_EVASION: "Contournement de sanctions",
+  ORGANIZED_CRIME: "Criminalité organisée",
+  OTHER: "Autre",
+};
+
+// GDELT date ses articles en « AAAAMMJJ ».
+function fmtSeen(v: string): string {
+  if (!/^\d{8}$/.test(v)) return v;
+  return `${v.slice(6, 8)}/${v.slice(4, 6)}/${v.slice(0, 4)}`;
+}
 
 function displayName(d: AnyObj | null): string {
   const p = d?.request?.request_payload ?? {};
@@ -53,6 +73,11 @@ export default function ScreeningDetails() {
   const [events, setEvents] = useState<ComplianceEvent[]>([]);
   const [ubo, setUbo] = useState<UboLookup | null>(null);
   const [own, setOwn] = useState<CompanyOwnership | null>(null);
+  // Presse : chargée sur demande explicite. La source impose un débit d'une
+  // requête toutes les 5 s — l'appeler à chaque ouverture de dossier la
+  // saturerait et ralentirait l'écran pour une information d'appoint.
+  const [press, setPress] = useState<PressResult | null>(null);
+  const [pressBusy, setPressBusy] = useState(false);
 
   async function load() {
     if (!id) return;
@@ -91,9 +116,27 @@ export default function ScreeningDetails() {
   const sorted = useMemo(() => [...matches].sort((a, b) => Number(b.match_score ?? 0) - Number(a.match_score ?? 0)), [matches]);
   // Regroupement inter-sources calculé côté serveur.
   const grouped: AnyObj[] = Array.isArray(data?.matches_grouped) ? data.matches_grouped : [];
+  // Instantané pris lors de la vérification : le dossier se relit tel qu'il se
+  // présentait à la décision, même si la base a évolué depuis.
+  const adverse: AnyObj | null = data?.adverse_media ?? null;
   const strong = sorted.filter((m) => Number(m.match_score ?? 0) >= 85).length;
   const entities = new Set(sorted.map((m) => m.entity_id)).size;
   const name = displayName(data);
+
+  async function runPress() {
+    const p = request?.request_payload ?? {};
+    const company = p.company_name || p.meta?.company_name || p.name;
+    if (!company) { toast("Dénomination sociale absente du dossier", "error"); return; }
+    setPressBusy(true);
+    try {
+      setPress(await searchAdverseMediaPress(String(company)));
+    } catch {
+      setPress({ name: String(company), articles: [], attribution: "",
+                 cached: false, error: "Recherche de presse indisponible." });
+    } finally {
+      setPressBusy(false);
+    }
+  }
 
   return (
     <div>
@@ -267,6 +310,86 @@ export default function ScreeningDetails() {
                       </Button>
                     </>
                   )}
+                </Card>
+              )}
+
+              {/* Médias défavorables — deux niveaux volontairement séparés :
+                  la base BCRG fait foi et pèse sur le risque ; la presse est
+                  une piste à trier, sans effet sur la décision. */}
+              {isCompany && (
+                <Card>
+                  <CardTitle sub="Signalements de presse rattachés à la société. La base BCRG fait foi ; les pistes de presse sont à vérifier avant tout usage.">
+                    <Newspaper size={18} /> Médias défavorables
+                  </CardTitle>
+
+                  {!adverse?.hit ? (
+                    <div className="ds-small ds-muted">
+                      Aucun signalement dans la base BCRG pour cette société.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="ds-row ds-small" style={{ gap: 8, marginBottom: 12 }}>
+                        <Badge tone={adverse.severity === "SEVERE" ? "critical" : "high"}>
+                          {adverse.severity === "SEVERE" ? "Fait grave signalé" : "Signalement à examiner"}
+                        </Badge>
+                        <span className="ds-muted">
+                          Risque porté au minimum à {adverse.risk_floor === "HIGH" ? "élevé" : "moyen"} — sans blocage automatique.
+                        </span>
+                      </div>
+                      <div className="ds-table-wrap">
+                        <table className="ds-table">
+                          <thead><tr><th>Entité signalée</th><th>Catégorie</th><th>Source</th><th>Ressemblance</th></tr></thead>
+                          <tbody>
+                            {(adverse.matches ?? []).map((m: AnyObj) => (
+                              <tr key={String(m.id)}>
+                                <td style={{ fontWeight: 650 }}>{m.entity_name}</td>
+                                <td><Badge tone="neutral">{AM_CATEGORY[String(m.category)] || m.category}</Badge></td>
+                                <td className="ds-small ds-muted">
+                                  {m.url ? <a href={String(m.url)} target="_blank" rel="noreferrer">{m.source || "lien"}</a> : (m.source || "—")}
+                                </td>
+                                <td><Badge tone={Number(m.score) >= 85 ? "critical" : "medium"}>{m.score}%</Badge></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="ds-mt-16" style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+                    <div className="ds-row ds-wrap" style={{ gap: 10, alignItems: "center" }}>
+                      <b className="ds-small">Pistes de presse</b>
+                      <span className="ds-small ds-muted" style={{ flex: 1 }}>
+                        Presse mondiale, non vérifiée — n'entre pas dans la décision.
+                      </span>
+                      <Button variant="secondary" icon={<Search size={15} />} disabled={pressBusy}
+                        onClick={runPress}>
+                        {pressBusy ? "Recherche…" : press ? "Relancer" : "Rechercher dans la presse"}
+                      </Button>
+                    </div>
+
+                    {press?.error && (
+                      <div className="ds-small ds-muted ds-mt-16">{press.error}</div>
+                    )}
+                    {press && !press.error && press.articles.length === 0 && (
+                      <div className="ds-small ds-muted ds-mt-16">
+                        Aucun article défavorable trouvé sur les 24 derniers mois.
+                      </div>
+                    )}
+                    {press && press.articles.length > 0 && (
+                      <>
+                        <ul className="ds-mt-16" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+                          {press.articles.map((a, i) => (
+                            <li key={i} className="ds-small">
+                              {a.url ? <a href={a.url} target="_blank" rel="noreferrer">{a.title}</a> : a.title}
+                              <span className="ds-muted"> — {a.domain}{a.seen_at ? ` · ${fmtSeen(a.seen_at)}` : ""}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="ds-small ds-muted ds-mt-16">{press.attribution}</div>
+                      </>
+                    )}
+                  </div>
                 </Card>
               )}
 
