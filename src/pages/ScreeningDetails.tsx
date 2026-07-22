@@ -418,17 +418,17 @@ export default function ScreeningDetails() {
               )}
 
               {/* Médias défavorables — deux niveaux volontairement séparés :
-                  la base BCRG fait foi et pèse sur le risque ; la presse est
+                  la base interne fait foi et pèse sur le risque ; la presse est
                   une piste à trier, sans effet sur la décision. */}
               {isCompany && (
                 <Card>
-                  <CardTitle sub="Signalements de presse rattachés à la société. La base BCRG fait foi ; les pistes de presse sont à vérifier avant tout usage.">
+                  <CardTitle sub="Signalements de presse rattachés à la société. La base interne fait foi ; les pistes de presse sont à vérifier avant tout usage.">
                     <Newspaper size={18} /> Médias défavorables
                   </CardTitle>
 
                   {!adverse?.hit ? (
                     <div className="ds-small ds-muted">
-                      Aucun signalement dans la base BCRG pour cette société.
+                      Aucun signalement dans la base interne pour cette société.
                     </div>
                   ) : (
                     <>

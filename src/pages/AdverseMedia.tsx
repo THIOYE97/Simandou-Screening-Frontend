@@ -103,7 +103,7 @@ export default function AdverseMedia() {
     <div>
       <PageHeader
         icon={<Newspaper size={22} />}
-        title="Médias défavorables — base BCRG"
+        title="Médias défavorables"
         actions={<>
           <Button variant="secondary" icon={<Download size={16} />}
             onClick={() => downloadAdverseTemplate()}>Modèle de fichier</Button>
