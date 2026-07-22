@@ -119,7 +119,7 @@ export default function Settings() {
   return (
     <div>
       <PageHeader icon={<Settings2 size={22} />} title="Réglages"
-        subtitle="Paramétrez la plateforme : devises acceptées, règles de risque et listes." />
+         />
 
       <div className="ds-grid ds-grid-3" style={{ marginBottom: 22 }}>
         <Card hover style={{ cursor: "pointer" }} onClick={() => nav("/risk-scoring")}>

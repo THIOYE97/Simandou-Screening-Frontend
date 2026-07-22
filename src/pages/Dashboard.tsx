@@ -37,7 +37,7 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader icon={<Home size={22} />} title={greet}
-        subtitle="Voici l'essentiel pour bien démarrer votre journée." />
+         />
 
       {/* Actions rapides */}
       <div className="ds-grid ds-grid-4">

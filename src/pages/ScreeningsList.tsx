@@ -93,7 +93,6 @@ export default function ScreeningsList() {
       <PageHeader
         icon={<ClipboardList size={22} />}
         title="Vérifications"
-        subtitle="L'historique de toutes les vérifications réalisées : personnes et opérations."
         actions={<>
           <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={load}>Actualiser</Button>
           <Button icon={<UserPlus size={16} />} onClick={() => nav("/analyst")}>Vérifier une personne</Button>

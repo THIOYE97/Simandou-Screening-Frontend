@@ -86,7 +86,6 @@ export default function RiskScoring() {
       <PageHeader
         icon={<Gauge size={22} />}
         title="Niveau de risque & Règles"
-        subtitle="Estimez le risque d'une personne et ajustez les règles qui déclenchent les alertes."
         actions={<>
           <Button variant="secondary" icon={<Database size={16} />} onClick={seed}>Charger le référentiel</Button>
           <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={loadScenarios}>Actualiser</Button>

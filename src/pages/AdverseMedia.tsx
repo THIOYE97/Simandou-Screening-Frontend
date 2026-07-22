@@ -104,7 +104,6 @@ export default function AdverseMedia() {
       <PageHeader
         icon={<Newspaper size={22} />}
         title="Médias défavorables — base BCRG"
-        subtitle="Signalements retenus par la Conformité. Cette base fait foi : elle relève le niveau de risque des personnes morales vérifiées."
         actions={<>
           <Button variant="secondary" icon={<Download size={16} />}
             onClick={() => downloadAdverseTemplate()}>Modèle de fichier</Button>

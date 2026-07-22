@@ -49,7 +49,6 @@ export default function Watchlists() {
   return (
     <div>
       <PageHeader icon={<Radio size={22} />} title="Listes de surveillance"
-        subtitle="Les listes officielles contre lesquelles chaque personne est filtrée."
         actions={<Button variant="secondary" icon={<RefreshCw size={16} />} onClick={load}>Actualiser</Button>} />
 
       <div className="ds-grid ds-grid-4">

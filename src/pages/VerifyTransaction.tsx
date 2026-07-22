@@ -94,7 +94,7 @@ export default function VerifyTransaction() {
   return (
     <div>
       <PageHeader icon={<Banknote size={22} />} title="Vérifier une transaction"
-        subtitle="Analysez une opération : filtrage des parties contre les listes et détection des comportements atypiques." />
+         />
 
       <div className="ds-grid" style={{ gridTemplateColumns: "1.6fr 1fr", gap: 20, alignItems: "start" }}>
         <div>

@@ -5,6 +5,7 @@ import { AlertTriangle, Eye, EyeOff, Lock, Mail, ShieldCheck, Radar, Gauge, File
 import { login } from "../api";
 import { setToken } from "../auth";
 import { Button, Field } from "../ui";
+import bcrgMarkOnDark from "../assets/bcrg-mark-ondark.svg";
 
 function friendlyError(e: any): string {
   const status = e?.response?.status;
@@ -44,7 +45,13 @@ export default function Login() {
   return (
     <div className="ds-login ds-root">
       <div className="ds-login-brand">
-        <div className="ds-login-badge"><ShieldCheck size={22} /> Simandou Conformité</div>
+        <div className="ds-login-lockup">
+          <img src={bcrgMarkOnDark} alt="" className="ds-login-mark" />
+          <div>
+            <div className="ds-login-badge">Simandou Conformité</div>
+            <div className="ds-login-inst">Banque Centrale de la République de Guinée</div>
+          </div>
+        </div>
         <div>
           <h1 className="ds-login-hero">La conformité LBC/FT,<br />simple et sous contrôle.</h1>
           <p className="ds-login-hero-sub">Vérifiez vos clients, surveillez les opérations et traitez les alertes — le tout dans une seule plateforme claire.</p>
@@ -54,7 +61,7 @@ export default function Login() {
             <div className="ds-login-point"><FileCheck2 size={18} /> Alertes, signalements et rapports intégrés</div>
           </div>
         </div>
-        <div style={{ opacity: .8, fontSize: 13.5 }}>Banque Centrale de la République de Guinée</div>
+        <div style={{ opacity: .7, fontSize: 13 }}>Plateforme officielle de conformité · LBC/FT</div>
       </div>
 
       <div className="ds-login-form-wrap">

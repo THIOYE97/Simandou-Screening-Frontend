@@ -108,7 +108,6 @@ export default function Alerts() {
       <PageHeader
         icon={<AlertTriangle size={22} />}
         title="Alertes à traiter"
-        subtitle="Cliquez une alerte pour ouvrir son dossier complet et intervenir."
         actions={<>
           <Button variant="secondary" icon={<Wand2 size={16} />} onClick={initRules}>Règles par défaut</Button>
           <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={load}>Actualiser</Button>

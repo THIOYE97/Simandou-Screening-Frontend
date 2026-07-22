@@ -45,7 +45,6 @@ export default function ComplianceDashboard() {
       <PageHeader
         icon={<LayoutDashboard size={22} />}
         title="Tableau de bord Conformité"
-        subtitle="Tout ce qui demande votre attention aujourd'hui, en un coup d'œil."
         actions={<Button variant="secondary" icon={<RefreshCw size={16} />} onClick={load}>Actualiser</Button>}
       />
 

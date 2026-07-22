@@ -31,7 +31,6 @@ export default function Reports() {
   return (
     <div>
       <PageHeader icon={<FileBarChart size={22} />} title="Rapports"
-        subtitle="Synthèse de l'activité de conformité : volumes, niveaux de risque et suivi."
         actions={<Button variant="secondary" icon={<RefreshCw size={16} />} onClick={load}>Actualiser</Button>} />
 
       <div className="ds-grid ds-grid-4">

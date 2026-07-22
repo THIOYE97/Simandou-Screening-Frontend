@@ -300,7 +300,6 @@ export default function BeneficialOwners() {
       <PageHeader
         icon={<Network size={22} />}
         title="Bénéficiaires effectifs"
-        subtitle="Déclarez la chaîne de détention d'une personne morale et filtrez chaque bénéficiaire contre les listes."
         actions={<>
           <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={load}>Actualiser</Button>
           <Button icon={<Plus size={16} />} onClick={() => setShowNew((v) => !v)}>Nouvelle déclaration</Button>
