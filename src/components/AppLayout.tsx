@@ -98,7 +98,7 @@ export default function AppLayout() {
           <img src="/favicon.svg" alt="" className="ds-brand-logo" />
           <div>
             <div className="ds-brand-name">Simandou Conformité</div>
-            <div className="ds-brand-sub">Lutte anti-blanchiment · BCRG</div>
+            <div className="ds-brand-sub">Lutte anti-blanchiment · LBC/FT</div>
           </div>
         </Link>
 

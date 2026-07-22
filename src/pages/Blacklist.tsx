@@ -148,7 +148,7 @@ export default function Blacklist() {
             <EmptyState icon={<Ban size={26} />}
               title={rows.length === 0 ? "Aucune décision enregistrée" : "Aucun résultat"}
               subtitle={rows.length === 0
-                ? "Téléchargez le modèle, puis reversez le fichier de la BCRG."
+                ? "Téléchargez le modèle, puis importez le fichier des interdits bancaires."
                 : "Aucune décision ne correspond à cette recherche."} />
           </div>
         ) : (

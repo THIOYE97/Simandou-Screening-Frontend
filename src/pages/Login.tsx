@@ -5,7 +5,7 @@ import { AlertTriangle, Eye, EyeOff, Lock, Mail, ShieldCheck, Radar, Gauge, File
 import { login } from "../api";
 import { setToken } from "../auth";
 import { Button, Field } from "../ui";
-import bcrgMarkOnDark from "../assets/bcrg-mark-ondark.svg";
+import productMarkOnDark from "../assets/product-mark-ondark.svg";
 
 function friendlyError(e: any): string {
   const status = e?.response?.status;
@@ -46,10 +46,10 @@ export default function Login() {
     <div className="ds-login ds-root">
       <div className="ds-login-brand">
         <div className="ds-login-lockup">
-          <img src={bcrgMarkOnDark} alt="" className="ds-login-mark" />
+          <img src={productMarkOnDark} alt="" className="ds-login-mark" />
           <div>
             <div className="ds-login-badge">Simandou Conformité</div>
-            <div className="ds-login-inst">Banque Centrale de la République de Guinée</div>
+            <div className="ds-login-inst">Plateforme de conformité LBC/FT</div>
           </div>
         </div>
         <div>
@@ -76,7 +76,7 @@ export default function Login() {
               <div className="ds-input-ico">
                 <Mail size={17} />
                 <input className="ds-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder="vous@bcrg-guinee.org" autoComplete="email" />
+                  placeholder="vous@exemple.com" autoComplete="email" />
               </div>
             </Field>
             <Field label="Mot de passe">
