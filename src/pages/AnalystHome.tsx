@@ -142,17 +142,17 @@ function ProcessingStep({
           height: 28,
           borderRadius: 14,
           flexShrink: 0,
-          background: done ? "var(--ok)" : active ? "var(--accent)" : "rgba(255,255,255,0.08)",
+          background: done ? "var(--ok)" : active ? "var(--accent)" : "rgba(20,30,60,0.05)",
           border: done
             ? "none"
             : active
             ? "2px solid var(--accent)"
-            : "2px solid rgba(255,255,255,0.1)",
+            : "2px solid rgba(20,30,60,0.08)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           transition: "all 0.4s",
-          boxShadow: active ? "0 0 12px rgba(45,127,214,0.5)" : "none",
+          boxShadow: active ? "0 0 12px rgba(31,85,64,0.5)" : "none",
         }}
       >
         {done ? <Check size={14} strokeWidth={3} color="white" /> : active ? <ProcessingDot /> : null}
@@ -317,7 +317,7 @@ function ResultCard({
 
       <div
         style={{
-          background: "rgba(45,127,214,0.08)",
+          background: "rgba(31,85,64,0.08)",
           border: "1px solid var(--border)",
           borderRadius: 14,
           padding: 16,
@@ -855,7 +855,7 @@ export default function AnalystHome() {
                             padding: "10px 8px",
                             textAlign: "center",
                             background: active
-                              ? "rgba(45,127,214,0.12)"
+                              ? "rgba(31,85,64,0.12)"
                               : done
                               ? "rgba(46,204,143,0.07)"
                               : "transparent",
@@ -909,7 +909,7 @@ export default function AnalystHome() {
                           padding: "32px 20px",
                           textAlign: "center",
                           cursor: "pointer",
-                          background: docFile ? "var(--accent-light)" : "rgba(255,255,255,0.02)",
+                          background: docFile ? "var(--accent-light)" : "rgba(20,30,60,0.02)",
                           transition: "all 0.2s",
                           marginBottom: 14,
                         }}
@@ -1017,7 +1017,7 @@ export default function AnalystHome() {
                       <div
                         style={{
                           padding: "20px",
-                          background: "rgba(255,255,255,0.03)",
+                          background: "rgba(20,30,60,0.03)",
                           border: "1px solid var(--border)",
                           borderRadius: 14,
                           marginBottom: 20,
@@ -1154,7 +1154,7 @@ export default function AnalystHome() {
               </div>
 
               <div style={{ marginBottom: 20 }}>
-                <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3, marginBottom: 8 }}>
+                <div style={{ height: 6, background: "rgba(20,30,60,0.05)", borderRadius: 3, marginBottom: 8 }}>
                   <div
                     style={{
                       height: "100%",
@@ -1162,7 +1162,7 @@ export default function AnalystHome() {
                       background: "var(--accent)",
                       width: `${Math.round((procStep / procSteps.length) * 100)}%`,
                       transition: "width 0.5s ease",
-                      boxShadow: "0 0 8px rgba(45,127,214,0.5)",
+                      boxShadow: "0 0 8px rgba(31,85,64,0.5)",
                     }}
                   />
                 </div>
