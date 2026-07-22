@@ -95,6 +95,7 @@ export default function AppLayout() {
     <div className="ds-shell ds-root">
       <aside className={`ds-side ${open ? "open" : ""}`}>
         <Link to="/dashboard" className="ds-brand">
+          <img src="/favicon.svg" alt="" className="ds-brand-logo" />
           <div>
             <div className="ds-brand-name">Simandou Conformité</div>
             <div className="ds-brand-sub">Lutte anti-blanchiment · BCRG</div>

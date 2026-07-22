@@ -62,7 +62,7 @@ function riskConfig(r: string | null) {
   const v = String(r || "").toUpperCase();
   if (v === "HIGH")
     return {
-      color: "#E84040",
+      color: "var(--danger)",
       bg: "rgba(232,64,64,0.12)",
       border: "rgba(232,64,64,0.3)",
       label: "Élevé",
@@ -70,7 +70,7 @@ function riskConfig(r: string | null) {
     };
   if (v === "MEDIUM")
     return {
-      color: "#F5920A",
+      color: "var(--warn)",
       bg: "rgba(245,146,10,0.12)",
       border: "rgba(245,146,10,0.3)",
       label: "Moyen",
@@ -78,14 +78,14 @@ function riskConfig(r: string | null) {
     };
   if (v === "LOW")
     return {
-      color: "#2ECC8F",
+      color: "var(--ok)",
       bg: "rgba(46,204,143,0.12)",
       border: "rgba(46,204,143,0.3)",
       label: "Faible",
       icon: ShieldCheck,
     };
   return {
-    color: "#94A3B8",
+    color: "var(--text-mute)",
     bg: "rgba(148,163,184,0.1)",
     border: "rgba(148,163,184,0.2)",
     label: "—",
@@ -97,27 +97,27 @@ function actionConfig(a: string | null) {
   const v = String(a || "").toUpperCase();
   if (v === "PASS")
     return {
-      color: "#2ECC8F",
+      color: "var(--ok)",
       label: "Autoriser",
       icon: CheckCircle2,
       bg: "rgba(46,204,143,0.12)",
     };
   if (v === "MANUAL_REVIEW")
     return {
-      color: "#F5920A",
+      color: "var(--warn)",
       label: "Revue manuelle",
       icon: Search,
       bg: "rgba(245,146,10,0.12)",
     };
   if (v === "BLOCK")
     return {
-      color: "#E84040",
+      color: "var(--danger)",
       label: "Bloquer",
       icon: Ban,
       bg: "rgba(232,64,64,0.12)",
     };
   return {
-    color: "#94A3B8",
+    color: "var(--text-mute)",
     label: String(a || "—"),
     icon: XCircle,
     bg: "rgba(148,163,184,0.1)",
@@ -142,7 +142,7 @@ function ProcessingStep({
           height: 28,
           borderRadius: 14,
           flexShrink: 0,
-          background: done ? "#2ECC8F" : active ? "var(--accent)" : "rgba(255,255,255,0.08)",
+          background: done ? "var(--ok)" : active ? "var(--accent)" : "rgba(255,255,255,0.08)",
           border: done
             ? "none"
             : active
@@ -286,9 +286,9 @@ function ResultCard({
         >
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
             {result.matches_count > 0 ? (
-              <Sparkles size={20} strokeWidth={2.2} color="#E84040" />
+              <Sparkles size={20} strokeWidth={2.2} color="var(--danger)" />
             ) : (
-              <Check size={20} strokeWidth={2.6} color="#2ECC8F" />
+              <Check size={20} strokeWidth={2.6} color="var(--ok)" />
             )}
           </div>
           <div
@@ -298,7 +298,7 @@ function ResultCard({
               textTransform: "uppercase",
               letterSpacing: "0.08em",
               marginBottom: 2,
-              color: result.matches_count > 0 ? "#E84040" : "#2ECC8F",
+              color: result.matches_count > 0 ? "var(--danger)" : "var(--ok)",
             }}
           >
             Matchs
@@ -307,7 +307,7 @@ function ResultCard({
             style={{
               fontSize: 18,
               fontWeight: 800,
-              color: result.matches_count > 0 ? "#E84040" : "#2ECC8F",
+              color: result.matches_count > 0 ? "var(--danger)" : "var(--ok)",
             }}
           >
             {result.matches_count}
@@ -631,10 +631,11 @@ export default function AnalystHome() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 24, alignItems: "start" }}>
         <div>
-          <div className="page-header">
-            <div className="page-kicker">AML / PEP</div>
-            <div className="page-title">Nouveau Screening</div>
-            <div className="page-subtitle">Lancez un screening AML/PEP en quelques secondes</div>
+          <div className="ds-page-head">
+            <h1 className="ds-page-title">
+              <span className="ds-page-icon"><Search size={22} /></span>
+              Vérifier une personne
+            </h1>
           </div>
 
           {step === "form" && (
@@ -642,7 +643,7 @@ export default function AnalystHome() {
               style={{
                 display: "flex",
                 gap: 0,
-                background: "rgba(0,0,0,0.3)",
+                background: "var(--surface-2)",
                 border: "1px solid var(--border)",
                 borderRadius: 14,
                 padding: 4,
@@ -732,7 +733,7 @@ export default function AnalystHome() {
                       <>
                         <div className="field">
                           <label className="small">
-                            Prénoms <span style={{ color: "#E84040" }}>*</span>
+                            Prénoms <span style={{ color: "var(--danger)" }}>*</span>
                           </label>
                           <input
                             className="input"
@@ -745,7 +746,7 @@ export default function AnalystHome() {
                         </div>
                         <div className="field">
                           <label className="small">
-                            Nom <span style={{ color: "#E84040" }}>*</span>
+                            Nom <span style={{ color: "var(--danger)" }}>*</span>
                           </label>
                           <input
                             className="input"
@@ -772,7 +773,7 @@ export default function AnalystHome() {
                     ) : (
                       <div className="field span-2">
                         <label className="small">
-                          Nom de l'entreprise <span style={{ color: "#E84040" }}>*</span>
+                          Nom de l'entreprise <span style={{ color: "var(--danger)" }}>*</span>
                         </label>
                         <input
                           className="input"
@@ -837,7 +838,7 @@ export default function AnalystHome() {
                       display: "flex",
                       gap: 0,
                       marginBottom: 20,
-                      background: "rgba(0,0,0,0.2)",
+                      background: "var(--surface-2)",
                       border: "1px solid var(--border)",
                       borderRadius: 10,
                       overflow: "hidden",
@@ -863,7 +864,7 @@ export default function AnalystHome() {
                         >
                           <div style={{ display: "flex", justifyContent: "center", marginBottom: 2 }}>
                             {done ? (
-                              <CheckCircle2 size={16} color="#2ECC8F" />
+                              <CheckCircle2 size={16} color="var(--ok)" />
                             ) : active ? (
                               <Loader2 size={16} color="var(--accent)" />
                             ) : (
@@ -874,7 +875,7 @@ export default function AnalystHome() {
                             style={{
                               fontSize: 11,
                               fontWeight: 600,
-                              color: active ? "var(--text-accent)" : done ? "#2ECC8F" : "var(--text-muted)",
+                              color: active ? "var(--text-accent)" : done ? "var(--ok)" : "var(--text-muted)",
                             }}
                           >
                             {["1. Upload", "2. OCR", "3. Confirmation"][i]}
@@ -951,7 +952,7 @@ export default function AnalystHome() {
                             borderRadius: 12,
                             overflow: "hidden",
                             border: "1px solid var(--border)",
-                            background: "rgba(0,0,0,0.2)",
+                            background: "var(--surface-2)",
                           }}
                         >
                           <img
@@ -1270,8 +1271,8 @@ export default function AnalystHome() {
                       width: 8,
                       height: 8,
                       borderRadius: 4,
-                      background: "#2ECC8F",
-                      boxShadow: "0 0 6px #2ECC8F44",
+                      background: "var(--ok)",
+                      boxShadow: "0 0 6px var(--ok)44",
                     }}
                   />
                 </div>

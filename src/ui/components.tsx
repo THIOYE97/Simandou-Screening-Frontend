@@ -56,7 +56,9 @@ export function PageHeader({ icon, title, subtitle, actions }:
 export function StatCard({ icon, value, label, tone = "var(--brand-600)", tint = "var(--brand-50)", trend }:
   { icon: ReactNode; value: ReactNode; label: string; tone?: string; tint?: string; trend?: ReactNode }) {
   return (
-    <div className="ds-stat">
+    // `color: tone` colore le filet d'accent en tête (::before) sans toucher au
+    // texte, qui porte ses propres couleurs.
+    <div className="ds-stat" style={{ color: tone }}>
       <div className="ds-stat-ico" style={{ background: tint, color: tone }}>{icon}</div>
       <div className="ds-stat-val" style={{ color: tone }}>{value}</div>
       <div className="ds-stat-label">{label}</div>

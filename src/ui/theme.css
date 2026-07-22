@@ -5,55 +5,66 @@
    ============================================================ */
 
 :root {
-  /* — Marque (bleu-indigo doux, non agressif) — */
-  --brand-50:  #eef1fa;
-  --brand-100: #dde3f5;
-  --brand-200: #c3cdec;
-  --brand-500: #5b73d1;
-  --brand-600: #4c62bd;
-  --brand-700: #3f5299;
-  --accent-500: #2fa79b;
+  /* — Marque BCRG : vert profond (identité) + or (accent). Le vert porte
+     l'autorité et la stabilité ; l'or, discret, ponctue sans jamais servir de
+     texte (contraste insuffisant). Repris du logo de la Banque Centrale. — */
+  --brand-50:  #e9f1ec;
+  --brand-100: #cfe3d6;
+  --brand-200: #a3c7b1;
+  --brand-500: #2c6b50;
+  --brand-600: #1f5540;   /* vert primaire, proche du logo */
+  --brand-700: #164132;
+  --brand-800: #103227;
+  --accent-500: #caa62a;   /* or BCRG — accents, jamais du texte sur blanc */
+  --accent-600: #b08f1f;
+  --gold: #d4b02f;  --gold-soft: #f6edcf;
 
-  /* — Neutres doux (thème clair reposant) — */
-  --bg:         #f4f6fb;
+  /* — Neutres slate, légèrement froids : premium et reposants — */
+  --bg:         #f3f5fa;
   --surface:    #ffffff;
-  --surface-2:  #f1f4f9;
-  --border:     #e7ecf4;
-  --border-2:   #d5dde9;
-  --text:       #26324a;
-  --text-soft:  #616f8a;
-  --text-mute:  #97a3b8;
+  --surface-2:  #f0f3f9;
+  --surface-3:  #e8edf6;   /* strate supplémentaire (survols, en-têtes de table) */
+  --border:     #e6eaf3;
+  --border-2:   #d3dae7;
+  --text:       #1e2842;   /* encre profonde, plus de contraste sur les titres */
+  --text-soft:  #5a6884;
+  --text-mute:  #8f9cb4;
 
-  /* — Sémantique risque : teintes légèrement désaturées, fonds très pastel — */
-  --risk-low:      #2f9e63;  --risk-low-bg:      #eaf6ef;
-  --risk-medium:   #c67c1e;  --risk-medium-bg:   #fbf2e4;
-  --risk-high:     #d9662f;  --risk-high-bg:     #fcefe6;
-  --risk-critical: #cf4444;  --risk-critical-bg: #fceceb;
-  --ok:      #2f9e63;  --ok-bg:   #eaf6ef;
-  --warn:    #c67c1e;  --warn-bg: #fbf2e4;
-  --danger:  #cf4444;  --danger-bg:#fceceb;
-  --info:    #4c62bd;  --info-bg: #eef1fa;
+  /* — Sémantique risque : teintes maîtrisées, fonds très pastel — */
+  --risk-low:      #1f9d5f;  --risk-low-bg:      #e8f6ee;
+  --risk-medium:   #bd7714;  --risk-medium-bg:   #fbf1e0;
+  --risk-high:     #d55f27;  --risk-high-bg:     #fceae0;
+  --risk-critical: #d13b3b;  --risk-critical-bg: #fce9e8;
+  --ok:      #1f9d5f;  --ok-bg:   #e8f6ee;
+  --warn:    #bd7714;  --warn-bg: #fbf1e0;
+  --danger:  #d13b3b;  --danger-bg:#fce9e8;
+  --info:    #3a4cc0;  --info-bg: #eef0fb;
 
   /* — Rayons / ombres / rythme — */
-  --r-sm: 8px;  --r-md: 12px;  --r-lg: 18px;  --r-xl: 24px;  --r-pill: 999px;
-  --sh-1: 0 1px 2px rgba(24,35,56,.06), 0 1px 3px rgba(24,35,56,.04);
-  --sh-2: 0 4px 12px rgba(24,35,56,.08), 0 2px 4px rgba(24,35,56,.04);
-  --sh-3: 0 12px 32px rgba(24,35,56,.12), 0 4px 8px rgba(24,35,56,.06);
-  --ring: 0 0 0 4px rgba(47,107,255,.18);
+  --r-sm: 8px;  --r-md: 12px;  --r-lg: 16px;  --r-xl: 22px;  --r-pill: 999px;
+  /* Ombres retravaillées : diffusion plus large, teintées de l'encre de marque,
+     pour une profondeur crédible plutôt qu'un simple gris. */
+  --sh-1: 0 1px 2px rgba(20,30,60,.05), 0 1px 3px rgba(20,30,60,.05);
+  --sh-2: 0 6px 16px -4px rgba(20,30,60,.10), 0 2px 6px -2px rgba(20,30,60,.06);
+  --sh-3: 0 18px 44px -12px rgba(20,30,60,.20), 0 6px 14px -6px rgba(20,30,60,.10);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--brand-500) 32%, transparent);
   --gap: 16px;
   --ease: cubic-bezier(.4, 0, .2, 1);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
   --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-num: "Inter", ui-monospace, system-ui, sans-serif;
 }
 
 /* Thème sombre (optionnel, bascule via [data-ds-theme="dark"]) */
 [data-ds-theme="dark"] {
-  --bg: #0e1524; --surface: #161f33; --surface-2: #1d2740;
-  --border: #263251; --border-2: #33436b;
-  --text: #eaf0fb; --text-soft: #a9b6d0; --text-mute: #7787a5;
-  --brand-50: #16223c;
-  --risk-low-bg:#12301f; --risk-medium-bg:#33260f; --risk-high-bg:#3a230f; --risk-critical-bg:#3a1616;
-  --ok-bg:#12301f; --warn-bg:#33260f; --danger-bg:#3a1616; --info-bg:#16223c;
-  --sh-1: 0 1px 2px rgba(0,0,0,.4); --sh-2: 0 6px 16px rgba(0,0,0,.45); --sh-3: 0 16px 40px rgba(0,0,0,.55);
+  --bg: #0d1322; --surface: #151d31; --surface-2: #1c263e; --surface-3: #242f4c;
+  --border: #253150; --border-2: #33436b;
+  --text: #eef2fb; --text-soft: #aab7d2; --text-mute: #778aa8;
+  --brand-50: #14261e; --brand-100: #1c3328; --brand-500: #4f9a78; --brand-600: #57a480; --brand-700: #74bd98;
+  --accent-500: #d4b02f; --gold: #e0bf3c; --gold-soft: #2e2a12;
+  --risk-low-bg:#11301e; --risk-medium-bg:#33260f; --risk-high-bg:#3a230f; --risk-critical-bg:#3a1616;
+  --ok-bg:#11301e; --warn-bg:#33260f; --danger-bg:#3a1616; --info-bg:#1a2547;
+  --sh-1: 0 1px 2px rgba(0,0,0,.45); --sh-2: 0 6px 18px -4px rgba(0,0,0,.55); --sh-3: 0 18px 44px -12px rgba(0,0,0,.65);
 }
 
 /* ---------------- Base ---------------- */
@@ -62,7 +73,7 @@
 
 /* Titres de page */
 .ds-page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
-.ds-page-title { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0; display: flex; align-items: center; gap: 12px; }
+.ds-page-title { font-size: 27px; font-weight: 800; letter-spacing: -.025em; margin: 0; display: flex; align-items: center; gap: 12px; font-variant-numeric: tabular-nums; }
 .ds-page-sub { color: var(--text-soft); font-size: 15px; margin-top: 4px; }
 .ds-page-icon { width: 44px; height: 44px; border-radius: var(--r-md); display: grid; place-items: center;
   background: var(--brand-50); color: var(--brand-600); flex-shrink: 0; }
@@ -71,18 +82,21 @@
 .ds-btn {
   --b: var(--brand-600); --bt: #fff;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  font-family: inherit; font-size: 14px; font-weight: 650; line-height: 1;
+  font-family: inherit; font-size: 14px; font-weight: 650; line-height: 1; letter-spacing: -.01em;
   padding: 11px 18px; border-radius: var(--r-md); border: 1px solid transparent;
-  background: var(--b); color: var(--bt); cursor: pointer; white-space: nowrap;
-  transition: transform .08s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease), filter .18s var(--ease);
-  box-shadow: var(--sh-1); user-select: none;
+  /* léger dégradé vertical : donne du volume au bouton primaire */
+  background: linear-gradient(180deg, color-mix(in srgb, var(--b) 92%, #fff) 0%, var(--b) 100%);
+  color: var(--bt); cursor: pointer; white-space: nowrap;
+  transition: transform .1s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease), filter .2s var(--ease);
+  box-shadow: var(--sh-1), inset 0 1px 0 rgba(255,255,255,.14); user-select: none;
 }
-.ds-btn:hover { filter: brightness(1.06); box-shadow: var(--sh-2); }
+.ds-btn:hover { filter: brightness(1.05); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255,255,255,.14); }
 .ds-btn:active { transform: translateY(1px) scale(.985); box-shadow: var(--sh-1); }
 .ds-btn:focus-visible { outline: none; box-shadow: var(--ring); }
 .ds-btn[disabled] { opacity: .5; cursor: not-allowed; transform: none; filter: none; }
-.ds-btn--secondary { --b: var(--surface); --bt: var(--text); border-color: var(--border-2); box-shadow: var(--sh-1); }
-.ds-btn--secondary:hover { background: var(--surface-2); }
+.ds-btn--secondary { --b: var(--surface); --bt: var(--text); border-color: var(--border-2);
+  background: var(--surface); box-shadow: var(--sh-1); }
+.ds-btn--secondary:hover { background: var(--surface-2); border-color: var(--border-2); }
 .ds-btn--ghost { --b: transparent; --bt: var(--text-soft); box-shadow: none; }
 .ds-btn--ghost:hover { background: var(--surface-2); box-shadow: none; }
 .ds-btn--danger { --b: var(--danger); }
@@ -109,10 +123,16 @@
 
 /* ---------------- Stat cards ---------------- */
 .ds-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
-  padding: 20px; box-shadow: var(--sh-1); position: relative; overflow: hidden; }
+  padding: 20px; box-shadow: var(--sh-1); position: relative; overflow: hidden;
+  transition: transform .18s var(--ease-out), box-shadow .18s var(--ease); }
+.ds-stat:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
+/* filet d'accent en tête, coloré par la teinte de l'icône */
+.ds-stat::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: currentColor; opacity: .9; }
 .ds-stat-ico { width: 42px; height: 42px; border-radius: var(--r-md); display: grid; place-items: center; margin-bottom: 14px; }
-.ds-stat-val { font-size: 32px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
-.ds-stat-label { color: var(--text-soft); font-size: 13.5px; margin-top: 6px; }
+.ds-stat-val { font-size: 33px; font-weight: 800; letter-spacing: -.025em; line-height: 1;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.ds-stat-label { color: var(--text-soft); font-size: 13.5px; margin-top: 7px; font-weight: 550; }
 .ds-stat-trend { font-size: 12.5px; font-weight: 650; margin-top: 8px; display: inline-flex; align-items: center; gap: 4px; }
 
 /* ---------------- Badges risque ---------------- */
@@ -149,9 +169,10 @@
 /* ---------------- Tables ---------------- */
 .ds-table-wrap { overflow-x: auto; border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--surface); }
 .ds-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.ds-table thead th { text-align: left; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--text-mute); padding: 13px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
-.ds-table tbody td { padding: 14px 16px; border-bottom: 1px solid var(--border); color: var(--text); }
+.ds-table thead th { text-align: left; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-mute); padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-3);
+  position: sticky; top: 0; }
+.ds-table tbody td { padding: 14px 16px; border-bottom: 1px solid var(--border); color: var(--text); font-variant-numeric: tabular-nums; }
 .ds-table tbody tr { transition: background .12s var(--ease); }
 .ds-table tbody tr:hover { background: var(--brand-50); }
 .ds-table tbody tr:last-child td { border-bottom: none; }
@@ -230,7 +251,7 @@
 .ds-side { width: 264px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
 .ds-brand { display: flex; align-items: center; gap: 12px; padding: 20px 20px 14px; text-decoration: none; color: var(--text); }
-.ds-brand-logo { width: 40px; height: 40px; border-radius: var(--r-md); object-fit: contain; background: var(--brand-50); padding: 4px; }
+.ds-brand-logo { width: 38px; height: 38px; border-radius: 10px; object-fit: contain; flex-shrink: 0; box-shadow: var(--sh-1); }
 .ds-brand-name { font-weight: 800; font-size: 15.5px; line-height: 1.1; letter-spacing: -.01em; }
 .ds-brand-sub { font-size: 11.5px; color: var(--text-mute); font-weight: 600; margin-top: 2px; }
 .ds-nav { flex: 1; overflow-y: auto; padding: 8px 12px; }
@@ -259,10 +280,14 @@
 /* ============== Connexion ============== */
 .ds-login { min-height: 100vh; display: grid; grid-template-columns: 1.05fr 1fr; font-family: var(--font); background: var(--bg); }
 .ds-login-brand { position: relative; overflow: hidden; color: #fff; padding: 56px; display: flex; flex-direction: column; justify-content: space-between;
-  background: radial-gradient(1200px 600px at 20% 10%, #3a74ff 0%, #1f57e6 40%, #143bb0 100%); }
-.ds-login-brand::after { content: ""; position: absolute; inset: 0; background: radial-gradient(500px 300px at 90% 90%, rgba(16,182,168,.5), transparent 60%); }
+  background: radial-gradient(1200px 620px at 18% 8%, #2c6b50 0%, #1f5540 42%, #103227 100%); }
+.ds-login-brand::after { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(520px 320px at 88% 92%, rgba(212,176,47,.34), transparent 62%); }
 .ds-login-brand > * { position: relative; z-index: 1; }
-.ds-login-badge { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+.ds-login-lockup { display: flex; align-items: center; gap: 14px; }
+.ds-login-mark { width: 58px; height: auto; flex-shrink: 0; }
+.ds-login-badge { font-weight: 750; font-size: 16px; letter-spacing: -.01em; }
+.ds-login-inst { font-size: 12px; opacity: .8; margin-top: 2px; font-weight: 500; }
 .ds-login-hero { font-size: 38px; font-weight: 800; line-height: 1.12; letter-spacing: -.02em; margin: 0 0 16px; }
 .ds-login-hero-sub { font-size: 16.5px; opacity: .9; line-height: 1.55; max-width: 440px; }
 .ds-login-points { display: grid; gap: 12px; margin-top: 26px; }

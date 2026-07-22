@@ -88,7 +88,6 @@ export default function Transactions() {
       <PageHeader
         icon={<ArrowLeftRight size={22} />}
         title="Surveillance des opérations"
-        subtitle="Analysez une opération pour repérer les comportements inhabituels, et signalez ce qui est suspect."
         actions={<Button variant="secondary" icon={<RefreshCw size={16} />} onClick={load}>Actualiser</Button>}
       />
 

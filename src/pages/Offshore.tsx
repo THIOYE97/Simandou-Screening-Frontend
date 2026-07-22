@@ -58,7 +58,6 @@ export default function Offshore() {
       <PageHeader
         icon={<Waves size={22} />}
         title="Fuites offshore"
-        subtitle="Recherchez un nom dans les structures offshore révélées par les enquêtes journalistiques."
       />
 
       {/* L'avertissement précède les résultats : un analyste ne doit jamais

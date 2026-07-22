@@ -1564,23 +1564,30 @@ input[type="checkbox"]:checked::after {
   background:rgba(232,64,64,0.25);
 }
 body[data-theme="light"] {
-  --bg-base:        #F6F4EF;
-  --bg-sidebar:     #F3F0EA;
-  --bg-sidebar-hover: rgba(45,127,214,0.08);
-  --bg-card:        #FCFBF8;
-  --bg-card-2:      #F5F2EC;
-  --bg-card-hover:  #F1EDE6;
-  --bg-input:       #F2EEE7;
-  --bg-overlay:     rgba(30,41,59,0.10);
+  --bg-base:        #f3f5fa;
+  --bg-sidebar:     #ffffff;
+  --bg-sidebar-hover: rgba(31,85,64,0.07);
+  --bg-card:        #ffffff;
+  --bg-card-2:      #f0f3f9;
+  --bg-card-hover:  #f0f3f9;
+  --bg-input:       #ffffff;
+  --bg-overlay:     rgba(20,30,60,0.28);
 
-  --text-primary:   #1F2937;
-  --text-secondary: #556070;
-  --text-muted:     #8B94A3;
-  --text-accent:    #2D7FD6;
+  --text-primary:   #1e2842;
+  --text-secondary: #5a6884;
+  --text-muted:     #8f9cb4;
+  --text-accent:    #1f5540;
 
-  --border:         rgba(31,41,55,0.08);
-  --border-light:   rgba(31,41,55,0.12);
-  --border-active:  rgba(45,127,214,0.28);
+  /* Accent legacy re-teinté sur le vert BCRG : aligne tous les écrans encore
+     en classes legacy (AnalystHome…) sans les réécrire. */
+  --accent:         #1f5540;
+  --accent-hover:   #2c6b50;
+  --accent-light:   rgba(31,85,64,0.14);
+  --accent-glow:    rgba(31,85,64,0.20);
+
+  --border:         #e6eaf3;
+  --border-light:   #eef1f7;
+  --border-active:  rgba(31,85,64,0.28);
 }
 body[data-theme="light"] .app-sidebar {
   background: var(--bg-sidebar);

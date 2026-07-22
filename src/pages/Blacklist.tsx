@@ -73,7 +73,6 @@ export default function Blacklist() {
       <PageHeader
         icon={<Ban size={22} />}
         title="Liste noire — interdits bancaires"
-        subtitle="Décisions de la BCRG. Ces personnes sont rapprochées par les vérifications au même titre que les cibles sanctionnées."
         actions={<>
           <Button variant="secondary" icon={<Download size={16} />}
             onClick={() => downloadBlacklistTemplate()}>Modèle</Button>
