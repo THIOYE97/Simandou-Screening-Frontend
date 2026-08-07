@@ -1012,3 +1012,87 @@ export async function getOffshoreStats(): Promise<OffshoreStats> {
   const { data } = await api.get("/offshore/stats");
   return data;
 }
+
+// ─────────────────────────────────────────────
+// Journal de connexions (console de sécurité, super-administrateur)
+// ─────────────────────────────────────────────
+export type LoginEventKind = "LOGIN_OK" | "LOGIN_FAILED" | "LOGOUT" | "REFRESH";
+
+export interface LoginEvent {
+  id: string;
+  event: LoginEventKind;
+  event_label: string;
+  reason?: string | null;
+  reason_label?: string | null;
+  email?: string | null;
+  full_name?: string | null;
+  user_id?: string | null;
+  tenant_name?: string | null;
+  ip?: string | null;
+  user_agent?: string | null;
+  is_new_context: boolean;
+  created_at: string;
+}
+
+export interface LoginEventsPage {
+  items: LoginEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface LoginSummary {
+  logins_24h: number;
+  logins_7d: number;
+  users_7d: number;
+  failures_24h: number;
+  new_contexts_7d: number;
+  last_login?: { created_at: string; email?: string | null; ip?: string | null } | null;
+}
+
+export interface ActiveSession {
+  id: string;
+  user_id?: string | null;
+  email?: string | null;
+  full_name?: string | null;
+  tenant_name?: string | null;
+  issued_at: string;
+  expires_at: string;
+  ip?: string | null;
+  user_agent?: string | null;
+}
+
+export interface AccountRow {
+  id: string;
+  email: string;
+  full_name?: string | null;
+  status?: string | null;
+  is_active?: boolean;
+  tenant_name?: string | null;
+  created_at?: string | null;
+  last_login_at?: string | null;
+  last_login_ip?: string | null;
+}
+
+export async function getLoginEvents(params: {
+  limit?: number; offset?: number; event?: string; email?: string;
+  days?: number; only_new_context?: boolean;
+} = {}): Promise<LoginEventsPage> {
+  const { data } = await api.get("/security/login-events", { params });
+  return data;
+}
+
+export async function getLoginSummary(): Promise<LoginSummary> {
+  const { data } = await api.get("/security/login-summary");
+  return data;
+}
+
+export async function getActiveSessions(): Promise<ActiveSession[]> {
+  const { data } = await api.get("/security/sessions");
+  return data.items ?? [];
+}
+
+export async function getAccounts(): Promise<AccountRow[]> {
+  const { data } = await api.get("/security/accounts");
+  return data.items ?? [];
+}

@@ -22,6 +22,15 @@ export function getRoles(): string[] {
   return [];
 }
 
+/**
+ * Super-administrateur : le seul profil qui voit au-delà d'un tenant.
+ * La revendication est portée par le jeton — elle n'est vraie que si le rôle
+ * SUPER_ADMIN a été attribué au compte (cf. app/scripts/grant_super_admin.py).
+ */
+export function isSuperAdmin(): boolean {
+  return safeJwtPayload()?.is_super_admin === true;
+}
+
 export function isAdmin(): boolean {
   const p = safeJwtPayload();
   if (p?.is_admin === true) return true;

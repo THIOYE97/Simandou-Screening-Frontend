@@ -2,6 +2,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { isAuthed } from "./auth";
 import ProtectedRoute from "./components/ProtectedRoute";
+import SuperAdminRoute from "./components/SuperAdminRoute";
 import AppLayout      from "./components/AppLayout";
 
 import Login            from "./pages/Login";
@@ -20,6 +21,7 @@ import Alerts           from "./pages/Alerts";
 import RiskScoring      from "./pages/RiskScoring";
 import Transactions     from "./pages/Transactions";
 import VerifyTransaction from "./pages/VerifyTransaction";
+import SecurityLog       from "./pages/SecurityLog";
 
 
 export default function App() {
@@ -46,6 +48,11 @@ export default function App() {
           <Route path="/adverse-media" element={<AdverseMedia />} />
           <Route path="/blacklist" element={<Blacklist />} />
           <Route path="/transactions"   element={<Transactions />} />
+
+          {/* Console de sécurité : super-administrateur uniquement. */}
+          <Route element={<SuperAdminRoute />}>
+            <Route path="/security-log" element={<SecurityLog />} />
+          </Route>
 
         </Route>
       </Route>
