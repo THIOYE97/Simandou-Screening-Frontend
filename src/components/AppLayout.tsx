@@ -4,7 +4,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Home, UserPlus, ClipboardList, Radio, FileBarChart, Settings2, Banknote,
   LayoutDashboard, AlertTriangle, Gauge, ArrowLeftRight, Building2, Network, Waves,
-  LogOut, Moon, Sun, Menu, ShieldCheck, Newspaper, Ban,
+  LogOut, Moon, Sun, Menu, ShieldCheck, ShieldAlert, Newspaper, Ban,
 } from "lucide-react";
 import { getToken, clearToken } from "../auth";
 import { listAlerts, getMyPermissions } from "../api";
@@ -26,6 +26,7 @@ const TITLES: Record<string, string> = {
   "/compliance": NAV.compliance, "/alerts": NAV.alerts, "/risk-scoring": NAV.risk, "/transactions": NAV.monitoring,
   "/beneficial-owners": NAV.beneficialOwners, "/offshore": NAV.offshore,
   "/adverse-media": NAV.adverseMedia, "/blacklist": NAV.blacklist,
+  "/security-log": NAV.securityLog,
 };
 
 export default function AppLayout() {
@@ -33,6 +34,9 @@ export default function AppLayout() {
   const nav = useNavigate();
   const p = payload();
   const isAdmin = p?.is_super_admin || p?.role === "ADMIN";
+  // Le journal de connexions expose les accès de TOUS les tenants : réservé au
+  // super-administrateur, comme l'API qui le sert (403 sinon).
+  const isSuperAdmin = p?.is_super_admin === true;
 
   const [theme, setTheme] = useState(() => localStorage.getItem("ds-theme") || "light");
   const [open, setOpen] = useState(false);
@@ -120,6 +124,11 @@ export default function AppLayout() {
               <Link to="/backoffice/tenants" className={`ds-nav-item ${active(loc.pathname, "/backoffice") ? "active" : ""}`}>
                 <Building2 size={19} /><span>Espace administrateur</span>
               </Link>
+              {isSuperAdmin && (
+                <Link to="/security-log" className={`ds-nav-item ${active(loc.pathname, "/security-log") ? "active" : ""}`}>
+                  <ShieldAlert size={19} /><span>{NAV.securityLog}</span>
+                </Link>
+              )}
             </>
           )}
         </nav>

@@ -19,6 +19,7 @@ export const NAV = {
   offshore: "Fuites offshore",
   adverseMedia: "Médias défavorables",
   blacklist: "Liste noire",
+  securityLog: "Journal de connexions",
 };
 
 // Niveaux de risque : mot simple + couleur + intensité (0..3)
